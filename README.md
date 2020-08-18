@@ -1,4 +1,4 @@
-# Statistics with R
+# [Statistics with R](https://www.coursera.org/specializations/statistics)
 
 ## Introduction to Probability and Data
 
