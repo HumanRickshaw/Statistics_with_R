@@ -1,0 +1,795 @@
+---
+title: "Exploring the BRFSS data"
+author: "Rohan Lewis"
+date: "5/20/2020"
+output: 
+  html_document: 
+    fig_width : 8
+    fig_height: 5.5
+    highlight: pygments
+    theme: spacelab
+---
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(comment = NA)
+```
+
+```{r load-packages, echo = FALSE, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(grid)
+library(gridExtra)
+library(cowplot)
+library(lemon)
+library(viridis)
+```
+
+```{r load-data, echo = FALSE}
+load("brfss2013.RData")
+```
+
+* * *
+
+## Part 1: Data
+
+The data collected by The Behavioral Risk Factor Surveillance System (BRFSS) seems to be a randomly selected sample of the US population.  Between 2013 - 2014, the population of the US was approximately [316 - 318 million](https://www.worldometers.info/world-population/us-population/).  The sample size of 491,775 people interviewed is approximately 0.15%.  I have some reservations on the nature of the selection process, which was not specified completely.
+
+First, approximately 1.5% of the US population may not have been represented, as ["Overall, an estimated 97.5% of US households had telephone service in 2012."](https://www.cdc.gov/brfss/annual_data/2013/pdf/Overview_2013.pdf).
+
+Second, the [distribution frequency](https://d18ky98rnyall9.cloudfront.net/_e34476fda339107329fc316d1f98e042_brfss_codebook.html?Expires=1589932800&Signature=RAPupyF4VJyYenI-0MOLUkqwa6Nc1mww59nwodwgZ-wWffIWT8Ve-d~xum76lskEhEaU3A6kzYrDRbTmy7o82yCNZOWOTZXk6mnKbMb489fRVR61IwMoVEW1Xekaxnvf8KULm3jwU7g5UqToNxCMZMmmly4sf1quTaQTjHiw7ZY_&Key-Pair-Id=APKAJLTNE6QMUY6HBC5A) among the residents interviewed in each state could be a misrepresentation.  The vast majority of states had over 5,000 residents interviewed.  However, if this were a more reflective representation, the states with the highest numbers of interviewed people would be, in order, California, Texas, Florida, and New York, the most populous states in 2013.  However, Florida is vastly overrepresented with 34,186 interviews, followed by Kansas (23,282), Nebraska (17,139), and Massachusetts(15,071).
+
+This was an observational study, as no hypothesis, controls, nor confounding variables were specified beforehand.  We can use this data to generalize the United States, but not make causal arguments.
+
+* * *
+
+## Part 2: Research questions
+
+**Research question 1:**
+
+Interview Month Frequency varies between 34,172 in January to 44,452 in March.  It seems to me that people would have less time in the spring and summer months, as people are more likely to have kids at home, as well as have previous engagements.  In the fall and winter months I would guess people would have more time to complete the interview, but some would again have to spend more time with their kids, or more time shopping for gifts. 
+
+Is there a relationship between the Final Disposition (whether or not the interview was completed), the Interview Month, and number of Children? 
+
+**Research question 2:**
+
+I am genuinely curious as to how aware people are of their own health.  Are they accurate and not in denial?
+
+Is there a relationship between opinion of ones General Health and having been diagnosed with High Blood Cholesterol and a Heart Attack?
+
+**Research question 3:**
+
+Numerous studies link sleep with diabetes, as hormones play an important role during rest, influencing glucose regulation.  I have sourced two such studies.
+
+[Impact of sleep and sleep loss on glucose homeostasis and appetite regulation](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2084401/)
+
+[Role of sleep duration in the regulation of glucose metabolism and appetite](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3018785/)
+
+Is this relationship of Duration of Sleep and Diabetes consistent in the BRFSS dataset?
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Research question 1:**
+
+Is there a relationship between the Final Disposition (whether or not the interview was completed), the Interview Month, and number of Children?
+
+I first selected only the three columns I am observing, imonth, dispcode, and children.  Here is the summary.
+
+```{r, echo = FALSE}
+month_Code_Children <- brfss2013 %>%
+  select(imonth, dispcode, children)
+
+month_Code_Children %>%
+  summary()
+```
+
+3 NAs are from imonth, 5 NAs are from dispcode, and 2,274 NAs are from Refused, and [Missing] from children.  I removed these entries.  From the tally of children, we see that the vast majority of children in the households interviewed are 0 - 3.  4 or more children will be grouped as one count.
+
+```{r, echo = FALSE}
+month_Code_Children <- na.omit(month_Code_Children)
+month_Code_Children$children <- as.numeric(month_Code_Children$children)
+month_Code_Children[month_Code_Children$children > 3, ]$children <- "4 or More"
+month_Code_Children$children <- as.character(month_Code_Children$children)
+
+month_Code_Children <- data.frame(month_Code_Children %>%
+    group_by(imonth, children, dispcode) %>%
+    tally())
+
+colnames(month_Code_Children)  <- c("Month", "Children", "Disposition", "Count")
+
+month_Code_Children
+```
+
+The plot below graphs the data from the summary above.  This representation highlights that most of the households interviewed had no children, and as the number of children increase the number of households decreases.  The number of interviews conducted seems to be fairly spread amongst the months.  The number of interviews that were not completed seems to be a consistent small percentage, regardless of children and months.
+
+```{r, echo = FALSE}
+#Helper Function to create a two line plot of completed and partially completed interviews based on number
+#of children entered.
+plot_Q1 <- function(df, children, boolean) {
+  g <- ggplot(df %>% filter(Children == children), aes(x = Month, y = Count, color = Disposition))
+  g <- g + geom_point(size = 5) + geom_line(aes(group = Disposition), size = 1.2)
+  #Viridis Color Scheme.
+  g <- g + scale_color_viridis_d()
+  #Boolean is FALSE for the first 4 graphs.  No X-axis labels and no legend. The last graph defines those.
+  if (boolean == FALSE) {
+    #Y-axis.
+    g <- g + scale_y_continuous(name = paste(children, "Children"),
+                              labels = comma)
+    #Modify labels and text.
+    g <- g + theme(axis.text.x = element_blank(),
+                   axis.title.x = element_blank(),
+                   axis.title.y = element_text(face = "bold"),
+                   legend.position = "none")
+  } else {
+    #Y-axis.
+    g <- g + scale_y_continuous(name = children,
+                                labels = comma)
+    #Modify labels and text.
+    g <- g + theme(axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                   axis.title.x = element_blank(),
+                   axis.title.y = element_text(face = "bold"),
+                   legend.title = element_text(face = "bold"),
+                   legend.key = element_blank(),
+                   legend.position = "bottom")
+  }
+}
+#Main Title.
+title <- ggdraw() +
+    draw_label("Number of Household Interviews by Children and Month",
+               fontface = 'bold', hjust = 0.45, size = 16)
+
+#Alignment of 5 plots.
+graphs <- plot_grid(plot_Q1(month_Code_Children, 0, FALSE),
+                    plot_Q1(month_Code_Children, 1, FALSE),
+                    plot_Q1(month_Code_Children, 2, FALSE),
+                    plot_Q1(month_Code_Children, 3, FALSE),
+                    plot_Q1(month_Code_Children, "4 or More", TRUE),
+                    align = "v", nrow = 5,
+                    rel_heights = c(2/13, 2/13, 2/13, 2/13, 5/13))
+#Add Title.  
+plot_grid(title, graphs, ncol = 1, rel_heights = c(.05, .95))
+```
+
+I was not satisfied with the above plot, so I decided to explore the data again.  The Counts of Completed Interviews and Partially Completed Interviews were used to calculate a Percent.  The data is shown below.
+
+```{r, echo = FALSE}
+month_Code_Children <- month_Code_Children %>%
+  spread(key = Disposition, value = Count)
+
+colnames(month_Code_Children)  <- c("Month", "Children", "Yes", "No")
+
+month_Code_Children <- month_Code_Children %>%
+  mutate(Percent = Yes / (Yes + No)) %>%
+  select(1,2,5)
+
+month_Code_Children
+```
+
+The plot below graphs the data from the summary above.  Some trends are now clearly visible.  The households with 0 children have the highest percentage of completion, and it seems that as children increase, the percentage drops slightly.
+
+November has a noticeably lower rate of completion than the other months, which could possibly be attributed to traveling for Thanksgiving and preparation for Christmas.  December also has a low rate of completion, possibly because of Christmas and New Year.  January and February have relatively high rates of completion, which could possibly be attributed to end of the holiday season, colder weather, and people mainly spending time at home.
+
+It should be emphasized that this completion rate is between 81.5% and 90.2%, regardless of number of children and month.
+
+```{r, echo = FALSE}
+#Scatter and Line Plot.
+g1 <- ggplot(month_Code_Children, aes(x = Month, y = Percent, color = Children))
+g1 <- g1 + geom_point(size = 6) + geom_line(aes(group = Children), size = 1.3)
+#Title.
+g1 <- g1 + ggtitle("% of Completed Interviews by Children and Month")
+#Viridis Color Scheme.
+g1 <- g1 + scale_color_viridis_d()
+#Y-axis.
+g1 <- g1 + scale_y_continuous(name = "Completed Interviews",
+                              labels = percent)
+#Modify labels and text.
+g1 <- g1 + theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                 axis.title.x = element_blank(),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"),
+                 legend.title = element_text(face = "bold"),
+                 legend.key = element_blank(),
+                 legend.position = "bottom")
+g1
+```
+
+**Research question 2:**
+
+Is there a relationship between opinion of ones General Health and having been diagnosed with High Blood Cholesterol and a Heart Attack?
+
+I first selected only the three columns I am observing, genhlth, toldhi2, and cvdinfr4.  Here is the summary.
+
+```{r, echo = FALSE}
+health_Ch_HA <- brfss2013 %>%
+  select(genhlth, toldhi2, cvdinfr4)
+
+health_Ch_HA %>%
+  summary()
+```
+
+1,985 NAs are from Don't know/Not Sure, Refused, and [Missing] from genhlth, 71,662 NAs are from Don't know/Not Sure, Refused, and [Missing] from toldhi2, and 2,587 NAs are from Don't know/Not Sure, Refused, and [Missing] from cvdinfr4.  I removed these entries.  toldhi2 and cvdinfr4 were combined into one column.  The columns were renamed.
+
+```{r, echo = FALSE}
+health_Ch_HA <- na.omit(health_Ch_HA)
+
+health_Ch_HA$Ch_HA <- paste(health_Ch_HA$toldhi2, health_Ch_HA$cvdinfr4, sep = "_")
+
+health_Ch_HA <- data.frame(health_Ch_HA %>%
+                               select(1, 4) %>%
+                               group_by(genhlth, Ch_HA) %>%
+                               tally())
+
+colnames(health_Ch_HA)  <- c("Health", "Ch_HA", "Count")
+
+health_Ch_HA
+```
+
+```{r, echo = FALSE}
+#Scatter and Line Plot.
+g3 <- ggplot(health_Ch_HA, aes(x = Health, y = Count, color = Ch_HA, shape = Ch_HA))
+g3 <- g3 + geom_point(size = 6)
+g3 <- g3 + geom_line(aes(group = Ch_HA), size = 1.3)
+#Title.
+g3 <- g3 + ggtitle("Cholesterol and Heart Attack\nDiagnoses vs Opinion of Health")
+#X-axis.
+g3 <- g3 + scale_x_discrete(name = "Interviewer's Opinion of Their Own Health")
+#Y-axis.
+g3 <- g3 + scale_y_continuous(name = "Number of Interviews",
+                            labels = comma)
+
+#Viridis Color Scheme.
+g3 <- g3 + scale_color_manual(name = "Cholesterol and Heart\nAttack Diagnoses",
+                            labels = c("No to Both",
+                                       "Has had a Heart Attack,\nbut not High Cholesterol",
+                                       "Has had High Cholesterol,\nbut not a Heart Attack",
+                                       "Yes to Both"),
+                            values = c(viridis(4)[2], viridis(4)[2],viridis(4)[3], viridis(4)[3]))   
+#Shape Scheme.
+g3 <- g3 + scale_shape_manual(name = "Cholesterol and Heart\nAttack Diagnoses",
+                            labels = c("No to Both",
+                                       "Has had a Heart Attack,\nbut not High Cholesterol",
+                                       "Has had High Cholesterol,\nbut not a Heart Attack",
+                                       "Yes to Both"),
+                            values = c(16, 17, 16, 17))
+#Modify labels and text.
+g3 <- g3 + theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+               axis.text.x = element_text(size = 12),
+               axis.title.x = element_text(size = 14, face = "bold"),
+               axis.text.y = element_text(size = 12),
+               axis.title.y = element_text(size = 14, face = "bold"),
+               legend.title = element_text(hjust = 0.5, face = "bold"),
+               legend.key = element_blank(),
+               legend.key.size = unit(1, "cm"))
+g3
+```
+
+I was not satisfied with the above plot, so I decided to explore the data again.  I created a stacked barchart by percents.
+
+```{r, echo = FALSE}
+#Stacked Barchart, total = 100%.
+g4 <- ggplot(health_Ch_HA, aes(x = Health, y = Count,fill = Ch_HA))
+g4 <- g4 + geom_bar(position = "fill", stat = "identity")
+#Title
+g4 <- g4 + ggtitle(label = "Cholesterol and Heart Attack\nDiagnoses vs Opinion of Health")
+#X-axis.
+g4 <- g4 + scale_x_discrete(name = "Interviewer's Opinion of Their Own Health",
+                              expand = c(0, 0))
+#Y-axis.
+g4 <- g4 + scale_y_continuous(name = "Percent of Interviews",
+                              labels = percent,
+                              expand = c(0, 0))
+#Viridis Fill Scheme, for two variables.
+g4 <- g4 + scale_fill_viridis_d(name = "Cholesterol and Heart\n  Attack Diagnoses",
+                                labels = c("No to Both",
+                                        "Has had a Heart Attack,\nbut not High Cholesterol",
+                                        "Has had High Cholesterol,\nbut not a Heart Attack",
+                                        "Yes to Both"))
+#Modify labels and text.
+g4 <- g4 + theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"),
+                 legend.title = element_text(hjust = 0.5, face = "bold"),
+                 legend.key.size = unit(1, "cm"))
+g4
+```
+
+We can clearly see that  the Interviewees' opinion of their health consistently corresponds with rates of being diagnosed with neither high cholesterol nor heart attacks.  Inversely, it also consistently corresponds with being diagnosed with both high cholesterol and heart attacks.
+
+Without doing an in depth analysis, this graph is very telling.  People seem to be somewhat aware of their own health.
+
+**Research question 3:**
+
+Is this relationship of Duration of Sleep and Diabetes consistent in the BRFSS dataset?
+
+I first selected only the two columns I am observing, sleptim1 and diabete3.  Here is the summary.
+
+```{r, echo = FALSE}
+sleep_Diabetes <- brfss2013 %>%
+  select(sleptim1, diabete3)
+
+sleep_Diabetes %>% 
+  summary()
+```
+
+7,387 NAs are from Don't know/Not Sure and Refused from sleptim1, and 832 NAs are from Don't know/Not Sure, Refused, and [Missing] from diabete3.  I removed these entries.  There were also one interview each where the recorded entry for sleep 103 and 450.  Both of these observations were eliminated.  The columns were renamed.
+
+```{r, echo = FALSE}
+sleep_Diabetes <- na.omit(sleep_Diabetes)
+sleep_Diabetes <- sleep_Diabetes %>%
+  filter(sleptim1 <= 24)
+
+sleep_Diabetes1 <- data.frame(sleep_Diabetes %>%
+    group_by(sleptim1, diabete3) %>%
+    tally())
+
+colnames(sleep_Diabetes1)  <- c("Sleep", "Diabetes", "Count")
+
+sleep_Diabetes1
+```
+
+```{r, echo = FALSE}
+sleep_Diabetes$sleptim1 <- as.numeric(sleep_Diabetes$sleptim1)
+sleep_Diabetes[sleep_Diabetes$sleptim1 > 8, ]$sleptim1 <- "9 or More"
+sleep_Diabetes[sleep_Diabetes$sleptim1 < 6, ]$sleptim1 <- "5 or Less"
+sleep_Diabetes$sleptim1 <- as.character(sleep_Diabetes$sleptim1)
+
+sleep_Diabetes2 <- data.frame(sleep_Diabetes %>%
+    group_by(sleptim1, diabete3) %>%
+    tally())
+
+colnames(sleep_Diabetes2)  <- c("Sleep", "Diabetes", "Count")
+
+sleep_Diabetes2
+```
+
+Upon inspection of the summary, one can clearly see that the vast majority of interviewees reported 6-8 hours of sleep.  Therefore, I grouped 1-5 hours as "5 or Less" and 9-24 hours as "9 or More".  The second above output is that new modified summary.
+  
+I created two plots below, corresponding to the summaries.  On the left is the unmodified data, by percent  The plot below on the right is the modified data with only five categories for hours of sleep, in absolute number of interviews.  
+
+```{r, echo = FALSE}
+#Stacked Barchart, total = 100%.
+g5 <- ggplot(sleep_Diabetes1, aes(x = Sleep, y = Count, fill = Diabetes))
+g5 <- g5 + geom_bar(position = "fill", stat = "identity")
+#No title, but leave space at top.
+g5 <- g5 + ggtitle(label = "")
+#X-axis.
+g5 <- g5 + scale_x_continuous(name = "",
+                              breaks = c(6, 12, 18, 24),
+                              labels = c("6", "12", "18", "24"),
+                              expand = c(0, 0))
+#Y-axis.
+g5 <- g5 + scale_y_continuous(name = "Percent of Interviews",
+                              labels = percent,
+                              expand = c(0, 0))
+#Viridis Fill Scheme.
+g5 <- g5 + scale_fill_viridis_d()
+#Modify labels and text. Remove legend from left plot.
+g5 <- g5 + theme(plot.title = element_text(hjust = 1, size = 16, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"),
+                 legend.position = "none")
+
+#Stacked Barchart, total = absolute count.
+g6 <- ggplot(sleep_Diabetes2, aes(x = Sleep, y = Count, fill = Diabetes))
+g6 <- g6 + geom_bar(position = "stack", stat = "identity")
+#Shared Title.
+g6 <- g6 + ggtitle(label = "Comparing Quantity of Sleep and Diabetes Diagnosis")
+#X-axis.
+g6 <- g6 + scale_x_discrete(name = "Reported Hours of Sleep Each Night",
+                            expand = c(0, 0))
+#Y-axis.
+g6 <- g6 + scale_y_continuous(name = "Number of Interviews",
+                              position = "right",
+                              labels = comma,
+                              expand = c(0, 0))
+#Viridis Fill Scheme.
+g6 <- g6 + scale_fill_viridis_d()
+#Modify labels and text.
+g6 <- g6 + theme(plot.title = element_text(hjust = 1.1, size = 16, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(hjust = 3, size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"))
+#Modify legend orientation.
+g6 <- g6 + guides(fill = guide_legend(title = "Diabetes Diagnosis",
+                                      title.position = "left",
+                                      nrow = 2, byrow = TRUE))
+#Modify legend text.  Save as object.
+legend3 <- g_legend(g6 + theme(legend.title = element_text(size = 12, face = "bold"),
+                               legend.text = element_text(size = 10),
+                               legend.position = "right"))
+#Remove legend from right plot.
+g6 <- g6 + theme(legend.position = "none")
+#Arrange left plot, right plot, and legend on the bottom.
+grid.arrange(g5, g6, legend3, layout_matrix = matrix(rbind(c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(NA, NA, NA, NA, NA, 3, 3, 3, NA, NA, NA, NA, NA)),
+                                                     ncol = 13))
+```
+
+From the graph on the left, one can see that the lowest rate of diabetes corresponds to those who reported 7 hours of sleep.  Coincidentally, this is also the most common hours of sleep reported.  6 and 8 hours of sleep have the lowest rates of diabetes and are also the most common, after 7 hours.  One can see a sharp increase in the rate of diabetes for those who reported 5 hours or less.  The trend for 9 or more hours follows no obvious pattern, but overall it seems that too much sleep/being sedentary is worse than too little sleep. 
+
+It is important that 9 or more contains the smallest number of interviews spread across the widest range of hours of sleep.
+
+Without doing any specific, in depth analysis, the preliminary exploratory plots here, comparing sleep to diabetes, agree with the common saying of 7-8 hours of sleep a night for adults.
+
+* * *
+
+# Appendix
+
+All code for each research question is included here.
+
+## Setup 
+
+```{r, eval = FALSE}
+knitr::opts_chunk$set(comment = NA)
+```
+
+### Load packages.
+
+```{r, eval = FALSE, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(grid)
+library(gridExtra)
+library(cowplot)
+library(lemon)
+library(viridis)
+```
+
+### Load data.
+
+```{r, eval = FALSE}
+load("brfss2013.RData")
+```
+
+## Research question 1 :
+
+```{r, eval = FALSE}
+#Select only "Interview Month", "Final Disposition", and "Number Of Children In Household".
+month_Code_Children <- brfss2013 %>%
+  select(imonth, dispcode, children)
+#Initial Summary.
+month_Code_Children %>%
+  summary()
+
+#Currently 491,775 observations.
+#3 NAs are from imonth.
+#5 NAs are from dispcode.
+#2,274 NAs are from Refused, and [Missing] from children
+#Remove NAs.
+month_Code_Children <- na.omit(month_Code_Children)
+month_Code_Children$children <- as.numeric(month_Code_Children$children)
+#Combine 4-24 children into one value.
+month_Code_Children[month_Code_Children$children > 3, ]$children <- "4 or More"
+month_Code_Children$children <- as.character(month_Code_Children$children)
+
+#Get a count of each completion level for each children level for each month level.
+month_Code_Children <- data.frame(month_Code_Children %>%
+    group_by(imonth, children, dispcode) %>%
+    tally())
+
+#Change the column names.
+colnames(month_Code_Children)  <- c("Month", "Children", "Disposition", "Count")
+
+#Count grouped by Month, Children, and Disposition Summary.
+month_Code_Children
+```
+
+Plot : Number of Household Interviews by Children and Month
+
+```{r, eval = FALSE}
+#Helper Function to create a two line plot of completed and partially completed interviews based on number
+#of children entered.
+plot_Q1 <- function(df, children, boolean) {
+  g <- ggplot(df %>% filter(Children == children), aes(x = Month, y = Count, color = Disposition))
+  g <- g + geom_point(size = 5) + geom_line(aes(group = Disposition), size = 1.2)
+  #Viridis Color Scheme.
+  g <- g + scale_color_viridis_d()
+  #Boolean is FALSE for the first 4 graphs.  No X-axis labels and no legend. The last graph defines those.
+  if (boolean == FALSE) {
+    #Y-axis.
+    g <- g + scale_y_continuous(name = paste(children, "Children"),
+                              labels = comma)
+    #Modify labels and text.
+    g <- g + theme(axis.text.x = element_blank(),
+                   axis.title.x = element_blank(),
+                   axis.title.y = element_text(face = "bold"),
+                   legend.position = "none")
+  } else {
+    #Y-axis.
+    g <- g + scale_y_continuous(name = children,
+                                labels = comma)
+    #Modify labels and text.
+    g <- g + theme(axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                   axis.title.x = element_blank(),
+                   axis.title.y = element_text(face = "bold"),
+                   legend.title = element_text(face = "bold"),
+                   legend.key = element_blank(),
+                   legend.position = "bottom")
+  }
+}
+#Main Title.
+title <- ggdraw() +
+    draw_label("Number of Household Interviews by Children and Month",
+               fontface = 'bold', hjust = 0.45, size = 16)
+
+#Alignment of 5 plots.
+graphs <- plot_grid(plot_Q1(month_Code_Children, 0, FALSE),
+                    plot_Q1(month_Code_Children, 1, FALSE),
+                    plot_Q1(month_Code_Children, 2, FALSE),
+                    plot_Q1(month_Code_Children, 3, FALSE),
+                    plot_Q1(month_Code_Children, "4 or More", TRUE),
+                    align = "v", nrow = 5,
+                    rel_heights = c(2/13, 2/13, 2/13, 2/13, 5/13))
+#Add Title.  
+plot_grid(title, graphs, ncol = 1, rel_heights = c(.05, .95))
+
+#Spread Disposition into two new columns, values are the Counts.
+month_Code_Children <- month_Code_Children %>%
+  spread(key = Disposition, value = Count)
+#Two new columns are Yes (Completed) and No (Partially Completed)
+colnames(month_Code_Children)  <- c("Month", "Children", "Yes", "No")
+#Create a new column Percent from Yes and No.
+month_Code_Children <- month_Code_Children %>%
+  mutate(Percent = Yes / (Yes + No)) %>%
+  select(1,2,5)
+
+#% Completion grouped by Month and Children Summary.
+month_Code_Children
+```
+
+Plot : % of Completed Interviews by Children and Month
+
+```{r, eval = FALSE}
+#Scatter and Line Plot.
+g1 <- ggplot(month_Code_Children, aes(x = Month, y = Percent, color = Children))
+g1 <- g1 + geom_point(size = 6) + geom_line(aes(group = Children), size = 1.3)
+#Title.
+g1 <- g1 + ggtitle("% of Completed Interviews by Children and Month")
+#Viridis Color Scheme.
+g1 <- g1 + scale_color_viridis_d()
+#Y-axis.
+g1 <- g1 + scale_y_continuous(name = "Completed Interviews",
+                              labels = percent)
+#Modify labels and text.
+g1 <- g1 + theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                 axis.title.x = element_blank(),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"),
+                 legend.title = element_text(face = "bold"),
+                 legend.key = element_blank(),
+                 legend.position = "bottom")
+g1
+```
+
+## Research question 2 :
+
+```{r, eval = FALSE}
+#Select only "Interview Month", "Final Disposition", and "Number Of Children In Household".
+health_Ch_HA <- brfss2013 %>%
+  select(genhlth, toldhi2, cvdinfr4)
+#Initial Summary.
+health_Ch_HA %>%
+  summary()
+
+#Currently 491,775 observations.
+#1,985 NAs are from genhlth.
+#71,662 NAs are from toldhi2.
+#2,587 NAs are from cvdinfr4.
+#Remove NAs.
+health_Ch_HA <- na.omit(health_Ch_HA)
+
+#Combine toldhi2 and cvdinfr4 into one variable.
+health_Ch_HA$Ch_HA <- paste(health_Ch_HA$toldhi2, health_Ch_HA$cvdinfr4, sep = "_")
+#Get a count of each health level for each cholesterol/heart attack level.
+health_Ch_HA <- data.frame(health_Ch_HA %>%
+                               select(1, 4) %>%
+                               group_by(genhlth, Ch_HA) %>%
+                               tally())
+
+#Change the column names.
+colnames(health_Ch_HA)  <- c("Health", "Ch_HA", "Count")
+#Count grouped by Health and Cholesterol/Heart Attack.
+health_Ch_HA
+```
+
+Plot : Cholesterol and Heart Attack Diagnoses vs Opinion of Health
+
+```{r, eval = FALSE}
+#Scatter and Line Plot.
+g3 <- ggplot(health_Ch_HA, aes(x = Health, y = Count, color = Ch_HA, shape = Ch_HA))
+g3 <- g3 + geom_point(size = 6)
+g3 <- g3 + geom_line(aes(group = Ch_HA), size = 1.3)
+#Title.
+g3 <- g3 + ggtitle("Cholesterol and Heart Attack\nDiagnoses vs Opinion of Health")
+#X-axis.
+g3 <- g3 + scale_x_discrete(name = "Interviewer's Opinion of Their Own Health")
+#Y-axis.
+g3 <- g3 + scale_y_continuous(name = "Number of Interviews",
+                            labels = comma)
+
+#Viridis Color Scheme.
+g3 <- g3 + scale_color_manual(name = "Cholesterol and Heart\nAttack Diagnoses",
+                            labels = c("No to Both",
+                                       "Has had a Heart Attack,\nbut not High Cholesterol",
+                                       "Has had High Cholesterol,\nbut not a Heart Attack",
+                                       "Yes to Both"),
+                            values = c(viridis(4)[2], viridis(4)[2],viridis(4)[3], viridis(4)[3]))
+#Shape Scheme.
+g3 <- g3 + scale_shape_manual(name = "Cholesterol and Heart\nAttack Diagnoses",
+                            labels = c("No to Both",
+                                       "Has had a Heart Attack,\nbut not High Cholesterol",
+                                       "Has had High Cholesterol,\nbut not a Heart Attack",
+                                       "Yes to Both"),
+                            values = c(16, 17, 16, 17))
+#Modify labels and text.
+g3 <- g3 + theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+               axis.text.x = element_text(size = 12),
+               axis.title.x = element_text(size = 14, face = "bold"),
+               axis.text.y = element_text(size = 12),
+               axis.title.y = element_text(size = 14, face = "bold"),
+               legend.title = element_text(hjust = 0.5, face = "bold"),
+               legend.key = element_blank(),
+               legend.key.size = unit(1, "cm"))
+g3
+```
+
+Plot : Cholesterol and Heart Attack Diagnoses vs Opinion of Health
+
+```{r, eval = FALSE}
+#Stacked Barchart, total = 100%.
+g4 <- ggplot(health_Ch_HA, aes(x = Health, y = Count,fill = Ch_HA))
+g4 <- g4 + geom_bar(position = "fill", stat = "identity")
+#Title
+g4 <- g4 + ggtitle(label = "Cholesterol and Heart Attack\nDiagnoses vs Opinion of Health")
+#X-axis.
+g4 <- g4 + scale_x_discrete(name = "Interviewer's Opinion of Their Own Health",
+                              expand = c(0, 0))
+#Y-axis.
+g4 <- g4 + scale_y_continuous(name = "Percent of Interviews",
+                              labels = percent,
+                              expand = c(0, 0))
+#Viridis Fill Scheme, for two variables.
+g4 <- g4 + scale_fill_viridis_d(name = "Cholesterol and Heart\n  Attack Diagnoses",
+                                labels = c("No to Both",
+                                        "Has had a Heart Attack,\nbut not High Cholesterol",
+                                        "Has had High Cholesterol,\nbut not a Heart Attack",
+                                        "Yes to Both"))
+#Modify labels and text.
+g4 <- g4 + theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"),
+                 legend.title = element_text(hjust = 0.5, face = "bold"),
+                 legend.key.size = unit(1, "cm"))
+g4
+```
+
+## Research question 3 :
+
+```{r, eval = FALSE}
+#Select only "How Much Time Do You Sleep" and "(Ever Told) You Have Diabetes"
+sleep_Diabetes <- brfss2013 %>%
+  select(sleptim1, diabete3)
+#Initial Summary.
+sleep_Diabetes %>% 
+  summary()
+
+#Currently 491,775 observations.
+#7,387 NAs are from Don't know/Not Sure and Refused from sleptim1.
+#832 NAs are from Don't know/Not Sure, Refused, and [Missing] from diabete3.
+#Remove NAs.
+sleep_Diabetes <- na.omit(sleep_Diabetes)
+#Remove two observations, 103 and 450 hours of sleep.
+sleep_Diabetes <- sleep_Diabetes %>%
+  filter(sleptim1 <= 24)
+
+#Get a count of each diabetes level for each sleep level.
+sleep_Diabetes1 <- data.frame(sleep_Diabetes %>%
+    group_by(sleptim1, diabete3) %>%
+    tally())
+#Change the column names.
+colnames(sleep_Diabetes1)  <- c("Sleep", "Diabetes", "Count")
+#Count grouped by Sleep and Diabetes Summary.
+sleep_Diabetes1
+
+sleep_Diabetes$sleptim1 <- as.numeric(sleep_Diabetes$sleptim1)
+#Combine 9-24 hours of sleep into one value.
+sleep_Diabetes[sleep_Diabetes$sleptim1 > 8, ]$sleptim1 <- "9 or More"
+#Combine 1-5 hours of sleep into one value.
+sleep_Diabetes[sleep_Diabetes$sleptim1 < 6, ]$sleptim1 <- "5 or Less"
+sleep_Diabetes$sleptim1 <- as.character(sleep_Diabetes$sleptim1)
+
+#Get a count of each diabetes level for each sleep level.
+sleep_Diabetes2 <- data.frame(sleep_Diabetes %>%
+    group_by(sleptim1, diabete3) %>%
+    tally())
+#Change the column names.
+colnames(sleep_Diabetes2)  <- c("Sleep", "Diabetes", "Count")
+#Count grouped by Sleep and Diabetes Summary.
+sleep_Diabetes2
+```
+
+Plot : Comparing Quantity of Sleep and Diabetes Diagnosis
+
+```{r, eval = FALSE}
+#Stacked Barchart, total = 100%.
+g5 <- ggplot(sleep_Diabetes1, aes(x = Sleep, y = Count, fill = Diabetes))
+g5 <- g5 + geom_bar(position = "fill", stat = "identity")
+#No title, but leave space at top.
+g5 <- g5 + ggtitle(label = "")
+#X-axis.
+g5 <- g5 + scale_x_continuous(name = "",
+                              breaks = c(6, 12, 18, 24),
+                              labels = c("6", "12", "18", "24"),
+                              expand = c(0, 0))
+#Y-axis.
+g5 <- g5 + scale_y_continuous(name = "Percent of Interviews",
+                              labels = percent,
+                              expand = c(0, 0))
+#Viridis Fill Scheme.
+g5 <- g5 + scale_fill_viridis_d()
+#Modify labels and text. Remove legend from left plot.
+g5 <- g5 + theme(plot.title = element_text(hjust = 1, size = 16, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"),
+                 legend.position = "none")
+
+#Stacked Barchart, total = absolute count.
+g6 <- ggplot(sleep_Diabetes2, aes(x = Sleep, y = Count, fill = Diabetes))
+g6 <- g6 + geom_bar(position = "stack", stat = "identity")
+#Shared Title.
+g6 <- g6 + ggtitle(label = "Comparing Quantity of Sleep and Diabetes Diagnosis")
+#X-axis.
+g6 <- g6 + scale_x_discrete(name = "Reported Hours of Sleep Each Night",
+                            expand = c(0, 0))
+#Y-axis.
+g6 <- g6 + scale_y_continuous(name = "Number of Interviews",
+                              position = "right",
+                              labels = comma,
+                              expand = c(0, 0))
+#Viridis Fill Scheme.
+g6 <- g6 + scale_fill_viridis_d()
+#Modify labels and text.
+g6 <- g6 + theme(plot.title = element_text(hjust = 1.1, size = 16, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(hjust = 3, size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"))
+#Modify legend orientation.
+g6 <- g6 + guides(fill = guide_legend(title = "Diabetes Diagnosis",
+                                      title.position = "left",
+                                      nrow = 2, byrow = TRUE))
+#Modify legend text.  Save as object.
+legend3 <- g_legend(g6 + theme(legend.title = element_text(size = 12, face = "bold"),
+                               legend.text = element_text(size = 10),
+                               legend.position = "right"))
+#Remove legend from right plot.
+g6 <- g6 + theme(legend.position = "none")
+#Arrange left plot, right plot, and legend on the bottom.
+grid.arrange(g5, g6, legend3, layout_matrix = matrix(rbind(c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(1, 1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2, 2),
+                                                           c(NA, NA, NA, NA, NA, 3, 3, 3, NA, NA, NA, NA, NA)),
+                                                     ncol = 13))
+```
