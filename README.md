@@ -8,8 +8,6 @@
 
 ## Inferential Statistics
 
-Description
-
 [Description](https://www.coursera.org/learn/inferential-statistics-intro/supplement/Suvhz/project-information)
 
 [HTML](https://humanrickshaw.github.io/Statistics_with_R/Inferential_Statistics.html)
