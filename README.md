@@ -30,7 +30,7 @@
 
 [Description](https://www.coursera.org/learn/statistics-project/peer/XkGx1/eda-and-basic-model-selection)
 
-[HTML]()
+[HTML](https://humanrickshaw.github.io/Statistics_with_R/EDA_and_Basic_Model_Selection.html)
 
 ### Final Data Analysis
 
