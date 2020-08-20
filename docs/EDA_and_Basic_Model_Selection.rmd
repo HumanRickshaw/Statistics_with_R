@@ -1,0 +1,630 @@
+---
+title: "Peer Assessment I - EDA and Basic Model Selection"
+author: "Rohan Lewis"
+date: "8/18/2020"
+output:
+  html_document: 
+    fig_width: 9
+
+---
+
+* * *
+
+Refer to the [codebook](http://jse.amstat.org/v19n3/decock/DataDocumentation.txt) for the Ames, Iowa dataset for more information.
+
+See the Appendix for code.
+
+* * *
+
+```{r load, echo = FALSE, message = FALSE}
+knitr::opts_chunk$set(comment = NA)
+
+load("D:/Coursera/R/Statistics with R Specialization/5 - Statistics with R Capstone/Week 4/ames_train.Rdata")
+#load("ames_train.Rdata")
+library(MASS)
+library(dplyr)
+library(expss)
+library(forcats)
+library(GGally)
+library(ggplot2)
+library(grid)
+library(cowplot)
+library(lemon)
+library(scales)
+library(tidyr)
+library(viridis)
+```
+
+# 1
+
+Make a labeled histogram (with 30 bins) of the ages of the houses in the data set, and describe the distribution.
+
+```{r Q1, echo = FALSE, message = FALSE}
+#Median and Mean Age.
+q1_median = 2020 - median(ames_train$Year.Built)
+q1_mean = 2020 - mean(ames_train$Year.Built)
+
+#Histogram.
+g1 <- ggplot(ames_train, aes(x = (2020 - Year.Built)))
+g1 <- g1 + geom_histogram(bins = 30, fill = viridis(7)[4])
+#Title.
+g1 <- g1 + ggtitle("Distribution of Houses by Age")
+#X-axis
+g1 <- g1 + scale_x_continuous("Age of House (years)", expand = c(0,0))
+#Y-axis.
+g1 <- g1 + scale_y_continuous(name = "Frequency of Age", expand = c(0,0))
+#Median Line.
+g1 <- g1 + geom_vline(xintercept = q1_median, size = 1.5, color = viridis(7)[2])
+#Mean Line.
+g1 <- g1 + geom_vline(xintercept = q1_mean, size = 1.5, color = viridis(7)[6])
+#Labels.
+median_label <- grobTree(textGrob(paste("Median =", q1_median, "years"),
+                                  x = 0.28,  y = 0.85, hjust = 0,
+                                  gp = gpar(col = viridis(7)[2], fontsize = 15)))
+mean_label <- grobTree(textGrob(paste("Mean = approx.", round(q1_mean, 0), "years"),
+                                x = 0.3,  y = 0.80, hjust = 0,
+                                gp = gpar(col = viridis(7)[6], fontsize = 15)))
+g1 <- g1 + annotation_custom(median_label) + annotation_custom(mean_label)
+
+#Modify labels and text.
+g1 <- g1 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"))
+g1
+```
+
+* * *
+The above histogram displays the spread of the ages for 1000 homes.  Notice that the data is skewed right, and approximately half the homes are younger than 45 years and half are older.  The mean age of the houses is 48 years.  Over 25% of the homes are less than 20 years old.
+
+* * *
+
+# 2
+The mantra in real estate is "Location, Location, Location!" Make a graphical display that relates a home price to its neighborhood in Ames, Iowa. Which summary statistics are most appropriate to use for determining the most expensive, least expensive, and most heterogeneous (having the most variation in housing price) neighborhoods? Report which neighborhoods these are based on the summary statistics of your choice. Report the value of your chosen summary statistics for these neighborhoods.
+
+```{r Q2, echo = FALSE, message = FALSE, warning = FALSE}
+g2 <- ggplot(ames_train, aes(x = fct_reorder(Neighborhood, price, .fun = 'median'),
+                             y = price))
+#Violin and Box Plot.
+g2 <- g2 + geom_violin(color = viridis(7)[5], width = 1.3) + geom_boxplot(color = viridis(7)[3], width = 0.2)
+#Title. 
+g2 <- g2 + ggtitle("Neighborhood vs Price")
+#X-axis
+g2 <- g2 + scale_x_discrete(name = "Neighborhood")
+#Y-axis.
+g2 <- g2 + scale_y_continuous(name = "Price", labels = dollar)
+#Modify labels and text.
+g2 <- g2 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"),
+                 legend.position = "none")
+g2
+
+ames_train  %>%
+  apply_labels(Neighborhood = "Neighborhood", price = "") %>%
+  tab_rows(Neighborhood) %>%
+  tab_cells(price) %>%
+  tab_cols(total(label = "House Price Statistics")) %>%
+  tab_stat_fun("Count" = w_n,
+               "Minimum" = w_min,
+               "Median" = w_median,
+               "Mean" = w_mean,
+               "Maximum" = w_max,
+               "Std. dev." = w_sd,
+               method = list) %>%
+  tab_pivot() %>%
+  set_caption("Table with Summary") %>% 
+  htmlTable(css.cell = c("width: 100px", rep("width: 80px", ncol(.) - 1)))
+```
+
+* * *
+The above box and violin plot shows the house prices.  They are sorted in ascending order by median price of their neighborhood.
+
+First, note that the number of homes in each neighborhood varies from 2 to 155.  
+
+Next, neither the most expensive nor least expensive house for each neighborhood is uniformly increasing as the medians are.  It is also clear that the spread of prices in each neighborhood varies greatly.
+
+The mean and median prices for each neighborhood tend to be quite similar. 
+
+Some general trends and labels can be made, however, there is no clear most expensive or least expensive neighborhood, as there is no neighborhood which has the highest or lowest prices for the metrics of minimum, median, mean, and maximum.  The number of houses and standard deviation also makes the qualification unclear.
+
+StoneBr and NridgHt have the largest spreads in terms of standard deviation.  They are also the most expensive neighborhoods by median, mean, and maximum house prices. However, one must also consider the geographic distribution of houses in a neighborhood.  Is a home that is significantly more or less expensive than the median or mean priced home in a neighborhood close to the center, or is it close to the border of another neighborhood?  This metric is not included in the data, but would possibly provide some interesting insight.
+
+* * *
+
+# 3 
+
+Which variable has the largest number of missing values? Explain why it makes sense that there are so many missing values for this variable.
+
+```{r Q3, echo = FALSE, message = FALSE}
+sort(colSums(is.na(ames_train)), decreasing = TRUE)[0:10]
+```
+
+* * *
+The column names have been sorted in descending order by number of missing values.  Pool.QC has 997 missing values.  This corresponds to 997 houses that do not have a swimming pool, which is reasonable and appropriate for data of 1000 houses.
+
+* * *
+
+# 4
+
+We want to predict the natural log of the home prices. Candidate explanatory variables are lot size in square feet (Lot.Area), slope of property (Land.Slope), original construction date (Year.Built), remodel date (Year.Remod.Add), and the number of bedrooms above grade (Bedroom.AbvGr). Pick a model selection or model averaging method covered in the Specialization, and describe how this method works. Then, use this method to find the best multiple regression model for predicting the natural log of the home prices.
+
+```{r Q4.1, echo = FALSE, message = FALSE}
+q4 <- ames_train %>%
+  select(price, Lot.Area, Land.Slope, Year.Built, Year.Remod.Add, Bedroom.AbvGr)
+
+summary(q4)
+
+ggcorr(q4[-3]) + scale_fill_viridis(direction = -1)
+```
+
+* * *
+A summary of the subsetted data and correlation plot are shown above.  Lot.Slope has been removed because it it is categorical. Collinearity does not seem to be relevant for this problem.
+
+* * *
+
+```{r Q4.2, echo = FALSE, message = FALSE}
+q4_model <- lm(log(price) ~ ., q4)
+
+new_R2 <- summary(lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = q4))$adj.r.squared
+Predictors <- ("Initial Model")
+R2 <- new_R2
+
+for (x in c(2:6)) {
+  Predictors <- c(Predictors, do.call(paste, c(as.list(colnames(q4[-c(1,x)])), sep = " + ")))
+  temp_df <- q4 %>%
+    select(colnames(q4[-x]))
+
+  new_R2 <- summary(lm(log(price) ~ ., data = temp_df))$adj.r.squared
+  R2 <- c(R2, new_R2)
+}
+
+R2_values <- data.frame("Predictor_Variables" = Predictors, "Adjusted_R2" = R2)
+R2_values
+```
+
+* * *
+I used the backward selection method, selecting predictors by their Adjusted R<sup>2</sup>. I am choosing this method because a reliable overall prediction model is my priority. I am not as concerned about the significance of the individual predictors, and thus not using p-values.
+
+The backward selection method will compare the Adjusted R<sup>2</sup> of the initial model with five predictor variables to each of the models including four of those variables.  As we can see from the above output, none of the models with four predictors has a greater Adjusted R<sup>2</sup> than the initial model.
+
+Thus, we include all five given variables. A summary of the model is shown below.
+
+* * *
+
+```{r Q4.3, echo = FALSE, message = FALSE}
+summary(q4_model)
+```
+
+# 5
+
+Which home has the largest squared residual in the previous analysis (Question 4)? Looking at all the variables in the data set, can you explain why this home stands out from the rest (what factors contribute to the high squared residual and why are those factors relevant)?
+
+```{r Q5.1, echo = FALSE, message = FALSE}
+sort(residuals(q4_model) ^2, decreasing = TRUE)[1:5]
+print(q4[428,])
+print(min(q4$price))
+```
+
+* * *
+House 428 has the highest squared residual by far.  The price, $12,789, seemed extremely low, so I also filtered the dataset to confirm that house 428 is indeed the lowest priced house in the dataset.  In the Neighborhood vs Price plot above, house 428 corresponds to the minimum point in OldTown.  This explains the high squared residual of house 428.
+
+* * *
+
+# 6
+
+Use the same model selection method you chose in Question 4 to again find the best multiple regression model to predict the natural log of home prices, but this time **replacing Lot.Area with log(Lot.Area)**. Do you arrive at a model including the same set of predictors?
+
+```{r Q6.1, echo = FALSE, message = FALSE}
+q6 <- q4 %>%
+  mutate(Lot.Area = log(Lot.Area))
+q6_model <- lm(log(price) ~ ., q6)
+
+new_R2 <- summary(lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = q6))$adj.r.squared
+Predictors <- ("Initial Model")
+R2 <- new_R2
+
+for (x in c(2:6)) {
+  Predictors <- c(Predictors, do.call(paste, c(as.list(colnames(q6[-c(1,x)])), sep = " + ")))
+  temp_df <- q6 %>%
+    select(colnames(q6[-x]))
+
+  new_R2 <- summary(lm(log(price) ~ ., data = temp_df))$adj.r.squared
+  R2 <- c(R2, new_R2)
+}
+
+R2_values <- data.frame("Predictor_Variables" = Predictors, "Adjusted_R2" = R2)
+R2_values
+```
+
+* * *
+Similar to Question 4, we can see from the above output, none of the models with four predictors has a greater adjusted R<sup>2</sup> than the initial model.
+
+Thus, we again include all five given variables. A summary of the model is shown below.
+
+* * *
+
+```{r Q6.2, echo = FALSE, message = FALSE}
+summary(q6_model)
+```
+
+* * *
+ 
+# 7
+
+Do you think it is better to log transform Lot.Area, in terms of assumptions for linear regression? Make graphs of the predicted values of log home price versus the true values of log home price for the regression models selected for Lot.Area and log(Lot.Area). Referencing these two plots, provide a written support that includes a quantitative justification for your answer in the first part of question 7.
+
+```{r Q7, echo = FALSE, message = FALSE, warning = FALSE}
+#Data for Log(House Price) by Lot Area.
+q7_1 <- q4 %>%
+  mutate(Observed = log(price)) %>%
+  select(Lot.Area, Observed)
+
+q7_1$Predicted = predict(q4_model)
+
+q7_1 <- q7_1 %>%
+  gather(y_type, price, c(Predicted, Observed))
+
+#Data for Log(House Price) by Logt(Lot Area).
+q7_2 <- q6 %>%
+  mutate(Observed = log(price)) %>%
+  select(Lot.Area, Observed)
+
+q7_2$Predicted = predict(q6_model)
+
+q7_2 <- q7_2 %>%
+  gather(y_type, price, c(Predicted, Observed))
+
+#Scatter, log(price) by Lot.Area.
+g7_1 <- ggplot(q7_1, aes(x = Lot.Area, y = price, color = y_type, shape = y_type))
+g7_1 <- g7_1 + geom_point(size = 4, stroke = 1.5, alpha = 0.75)
+#Title.
+g7_1 <- g7_1 + ggtitle(label = "")
+#X-axis.
+g7_1 <- g7_1 + scale_x_continuous("Lot Area", labels = comma)
+#Y-axis.
+g7_1 <- g7_1 + scale_y_continuous("Log(House Price)")
+#Viridis Color Scheme.
+g7_1 <- g7_1 + scale_color_manual(name = "Log(House Price)",
+                                  values = c(viridis(7)[6], viridis(7)[2]))
+#Shape Scheme.
+g7_1 <- g7_1 + scale_shape_manual(name = "Log(House Price)",
+                                  values = c(3, 4))
+#Modify labels and text. Remove legend from left plot.
+g7_1 <- g7_1 + theme(plot.title = element_text(hjust = 1, size = 16, face = "bold"),
+                     axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                     axis.title.x = element_text(size = 14, face = "bold"),
+                     axis.text.y = element_text(size = 12),
+                     axis.title.y = element_text(size = 14, face = "bold"),
+                     legend.position = "none")
+
+#Scatter, log(price) by log(Lot.Area).
+g7_2 <- ggplot(q7_2, aes(x = Lot.Area, y = price, color = y_type, shape = y_type))
+g7_2 <- g7_2 + geom_point(size = 4, stroke = 1.5, alpha = 0.75)
+#Title.
+g7_2 <- g7_2 + ggtitle(label = "Log(House Price) by Lot Area and Log(Lot Area)")
+#X-axis.
+g7_2 <- g7_2 + scale_x_continuous("Log(Lot Area)")
+#Y-axis.
+g7_2 <- g7_2 + scale_y_continuous("Log(House Price)", position = "right")
+#Viridis Color Scheme.
+g7_2 <- g7_2 + scale_color_manual(name = "Log(House Price)",
+                                  values = c(viridis(7)[6], viridis(7)[2]))
+#Shape Scheme.
+g7_2 <- g7_2 + scale_shape_manual(name = "Log(House Price)",
+                                  values = c(3, 4))
+#Modify labels and text.
+g7_2 <- g7_2 + theme(plot.title = element_text(hjust = 2.1, size = 16, face = "bold"),
+                     axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                     axis.title.x = element_text(size = 14, face = "bold"),
+                     axis.text.y = element_text(size = 12),
+                     axis.title.y = element_text(size = 14, face = "bold"))
+
+#Modify legend text.  Save as object.
+g7_legend <- g_legend(g7_2 + theme(legend.text = element_text(size = 12),
+                                   legend.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                                   legend.key.width = unit(1.5, "cm"),
+                                   legend.position = "bottom"))
+#Remove legend from right plot.
+g7_2 <- g7_2 + theme(legend.position = "none")
+
+#Align two plots horizontally across one row.
+g7 <- plot_grid(g7_1, g7_2, align = "h", nrow = 1)
+#Include legend at the bottom.
+plot_grid(g7, g7_legend, ncol = 1, rel_heights = c(0.90, 0.10))
+```
+
+* * *
+It is indeed better to log transform Lot.Area
+
+Upon transforming Lot Area to log(Lot Area), the spread of points is much less congested.  Looking at the output summaries from Questions 4 and 6, the respective Adjusted R<sup>2</sup> values are 0.560 and 0.603.  Using a log transformation on Lot Area explains a little more variance, which can be confirmed numerically and graphically.
+
+* * *
+
+# Appendix
+
+All code is included here.
+
+### Setup & Packages
+
+```{r, eval = FALSE}
+knitr::opts_chunk$set(comment = NA)
+load("ames_train.Rdata")
+
+library(MASS)
+library(dplyr)
+library(expss)
+library(forcats)
+library(GGally)
+library(ggplot2)
+library(grid)
+library(cowplot)
+library(lemon)
+library(scales)
+library(tidyr)
+library(viridis)
+```
+
+* * *
+
+# 1
+
+### Histogram
+```{r, eval = FALSE}
+#Median and Mean Age.
+q1_median = 2020 - median(ames_train$Year.Built)
+q1_mean = 2020 - mean(ames_train$Year.Built)
+#Histogram.
+g1 <- ggplot(ames_train, aes(x = (2020 - Year.Built)))
+g1 <- g1 + geom_histogram(bins = 30, fill = viridis(7)[4])
+#Title.
+g1 <- g1 + ggtitle("Distribution of Houses by Age")
+#X-axis
+g1 <- g1 + scale_x_continuous("Age of House (years)", expand = c(0,0))
+#Y-axis.
+g1 <- g1 + scale_y_continuous(name = "Frequency of Age", expand = c(0,0))
+#Median Line.
+g1 <- g1 + geom_vline(xintercept = q1_median, size = 1.5, color = viridis(7)[2])
+#Mean Line.
+g1 <- g1 + geom_vline(xintercept = q1_mean, size = 1.5, color = viridis(7)[6])
+#Labels.
+median_label <- grobTree(textGrob(paste("Median =", q1_median, "years"),
+                                  x = 0.28,  y = 0.85, hjust = 0,
+                                  gp = gpar(col = viridis(7)[2], fontsize = 15)))
+mean_label <- grobTree(textGrob(paste("Mean = approx.", round(q1_mean, 0), "years"),
+                                x = 0.3,  y = 0.80, hjust = 0,
+                                gp = gpar(col = viridis(7)[6], fontsize = 15)))
+g1 <- g1 + annotation_custom(median_label) + annotation_custom(mean_label)
+
+#Modify labels and text.
+g1 <- g1 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(size = 12),
+                 axis.title.x = element_text(size = 14, face = "bold"),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.y = element_text(size = 14, face = "bold"))
+g1
+```
+* * *
+
+# 2
+
+### Neighborhood Violin & Box Plot.
+```{r, eval = FALSE}
+g2 <- ggplot(ames_train, aes(x = fct_reorder(Neighborhood, price, .fun = 'median'),
+                             y = price))
+#Violin and Box Plot.
+g2 <- g2 + geom_violin(color = viridis(7)[5], width = 1.3) + geom_boxplot(color = viridis(7)[3], width = 0.2)
+#Title. 
+g2 <- g2 + ggtitle("Neighborhood vs Price")
+#X-axis
+g2 <- g2 + scale_x_discrete(name = "Neighborhood")
+#Y-axis.
+g2 <- g2 + scale_y_continuous(name = "Price", labels = dollar)
+#Modify labels and text.
+g2 <- g2 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"),
+                 legend.position = "none")
+g2
+```
+
+### Neighborhood Table Summary.
+```{r, eval = FALSE}
+ames_train  %>%
+  apply_labels(Neighborhood = "Neighborhood", price = "") %>%
+  tab_rows(Neighborhood) %>%
+  tab_cells(price) %>%
+  tab_cols(total(label = "House Price Statistics")) %>%
+  tab_stat_fun("Count" = w_n,
+               "Minimum" = w_min,
+               "Median" = w_median,
+               "Mean" = w_mean,
+               "Maximum" = w_max,
+               "Std. dev." = w_sd,
+               method = list) %>%
+  tab_pivot() %>%
+  set_caption("Table with Summary") %>% 
+  htmlTable(css.cell = c("width: 100px", rep("width: 80px", ncol(.) - 1)))
+```
+* * *
+
+# 3
+
+### Missing Values.
+
+```{r, eval = FALSE}
+sort(colSums(is.na(ames_train)), decreasing = TRUE)[0:10]
+```
+* * *
+
+# 4
+
+### Data Summary.
+```{r, eval = FALSE}
+q4 <- ames_train %>%
+  select(price, Lot.Area, Land.Slope, Year.Built, Year.Remod.Add, Bedroom.AbvGr)
+
+summary(q4)
+
+ggcorr(q4[-3]) + scale_fill_viridis(direction = -1)
+```
+
+### Backward Selection, Part I.
+```{r, eval = FALSE}
+q4_model <- lm(log(price) ~ ., q4)
+
+new_R2 <- summary(lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = q4))$adj.r.squared
+Predictors <- ("Initial Model")
+R2 <- new_R2
+
+for (x in c(2:6)) {
+  Predictors <- c(Predictors, do.call(paste, c(as.list(colnames(q4[-c(1,x)])), sep = " + ")))
+  temp_df <- q4 %>%
+    select(colnames(q4[-x]))
+
+  new_R2 <- summary(lm(log(price) ~ ., data = temp_df))$adj.r.squared
+  R2 <- c(R2, new_R2)
+}
+
+R2_values <- data.frame("Predictor_Variables" = Predictors, "Adjusted_R2" = R2)
+R2_values
+```
+
+### Model Summary, Part I.
+```{r, eval = FALSE}
+summary(q4_model)
+```
+* * *
+
+# 5
+
+### House 428.
+```{r, eval = FALSE}
+sort(residuals(q4_model) ^2, decreasing = TRUE)[1:5]
+print(q4[428,])
+print(min(q4$price))
+```
+
+* * *
+
+# 6
+
+### Backward Selection, Part II.
+```{r, eval = FALSE}
+q6 <- q4 %>%
+  mutate(Lot.Area = log(Lot.Area))
+q6_model <- lm(log(price) ~ ., q6)
+
+new_R2 <- summary(lm(log(price) ~ Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data = q6))$adj.r.squared
+Predictors <- ("Initial Model")
+R2 <- new_R2
+
+for (x in c(2:6)) {
+  Predictors <- c(Predictors, do.call(paste, c(as.list(colnames(q6[-c(1,x)])), sep = " + ")))
+  temp_df <- q6 %>%
+    select(colnames(q6[-x]))
+
+  new_R2 <- summary(lm(log(price) ~ ., data = temp_df))$adj.r.squared
+  R2 <- c(R2, new_R2)
+}
+
+R2_values <- data.frame("Predictor_Variables" = Predictors, "Adjusted_R2" = R2)
+R2_values
+```
+
+### Model Summary, Part II.
+```{r, eval = FALSE}
+summary(q6_model)
+```
+* * *
+
+# 7
+
+### Scatter Plots.
+```{r, eval = FALSE}
+#Data for Log(House Price) by Lot Area.
+q7_1 <- q4 %>%
+  mutate(Observed = log(price)) %>%
+  select(Lot.Area, Observed)
+
+q7_1$Predicted = predict(q4_model)
+
+q7_1 <- q7_1 %>%
+  gather(y_type, price, c(Predicted, Observed))
+
+#Data for Log(House Price) by Logt(Lot Area).
+q7_2 <- q6 %>%
+  mutate(Observed = log(price)) %>%
+  select(Lot.Area, Observed)
+
+q7_2$Predicted = predict(q6_model)
+
+q7_2 <- q7_2 %>%
+  gather(y_type, price, c(Predicted, Observed))
+
+#Scatter, log(price) by Lot.Area.
+g7_1 <- ggplot(q7_1, aes(x = Lot.Area, y = price, color = y_type, shape = y_type))
+g7_1 <- g7_1 + geom_point(size = 4, stroke = 1.5, alpha = 0.75)
+#Title.
+g7_1 <- g7_1 + ggtitle(label = "")
+#X-axis.
+g7_1 <- g7_1 + scale_x_continuous("Lot Area", labels = comma)
+#Y-axis.
+g7_1 <- g7_1 + scale_y_continuous("Log(House Price)")
+#Viridis Color Scheme.
+g7_1 <- g7_1 + scale_color_manual(name = "Log(House Price)",
+                                  values = c(viridis(7)[6], viridis(7)[2]))
+#Shape Scheme.
+g7_1 <- g7_1 + scale_shape_manual(name = "Log(House Price)",
+                                  values = c(3, 4))
+#Modify labels and text. Remove legend from left plot.
+g7_1 <- g7_1 + theme(plot.title = element_text(hjust = 1, size = 16, face = "bold"),
+                     axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                     axis.title.x = element_text(size = 14, face = "bold"),
+                     axis.text.y = element_text(size = 12),
+                     axis.title.y = element_text(size = 14, face = "bold"),
+                     legend.position = "none")
+
+#Scatter, log(price) by log(Lot.Area).
+g7_2 <- ggplot(q7_2, aes(x = Lot.Area, y = price, color = y_type, shape = y_type))
+g7_2 <- g7_2 + geom_point(size = 4, stroke = 1.5, alpha = 0.75)
+#Title.
+g7_2 <- g7_2 + ggtitle(label = "Log(House Price) by Lot Area and Log(Lot Area)")
+#X-axis.
+g7_2 <- g7_2 + scale_x_continuous("Log(Lot Area)")
+#Y-axis.
+g7_2 <- g7_2 + scale_y_continuous("Log(House Price)", position = "right")
+#Viridis Color Scheme.
+g7_2 <- g7_2 + scale_color_manual(name = "Log(House Price)",
+                                  values = c(viridis(7)[6], viridis(7)[2]))
+#Shape Scheme.
+g7_2 <- g7_2 + scale_shape_manual(name = "Log(House Price)",
+                                  values = c(3, 4))
+#Modify labels and text.
+g7_2 <- g7_2 + theme(plot.title = element_text(hjust = 2.1, size = 16, face = "bold"),
+                     axis.text.x = element_text(hjust = 1, size = 12, angle = 45),
+                     axis.title.x = element_text(size = 14, face = "bold"),
+                     axis.text.y = element_text(size = 12),
+                     axis.title.y = element_text(size = 14, face = "bold"))
+
+#Modify legend text.  Save as object.
+g7_legend <- g_legend(g7_2 + theme(legend.text = element_text(size = 12),
+                                   legend.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                                   legend.key.width = unit(1.5, "cm"),
+                                   legend.position = "bottom"))
+#Remove legend from right plot.
+g7_2 <- g7_2 + theme(legend.position = "none")
+
+#Align two plots horizontally across one row.
+g7 <- plot_grid(g7_1, g7_2, align = "h", nrow = 1)
+#Include legend at the bottom.
+plot_grid(g7, g7_legend, ncol = 1, rel_heights = c(0.90, 0.10))
+```
+* * *
+
+###
