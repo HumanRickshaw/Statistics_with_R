@@ -1,0 +1,2040 @@
+---
+title: "Final Data Analysis"
+subtitle: "Predicting housing prices in Ames, IA"
+author: "Rohan Lewis"
+date: "09/09/2020"
+output:
+  html_document :
+    fig_height : 5
+    fig_width : 8
+    highlight : espresso
+  
+---
+
+* * *
+
+
+
+# Background
+
+As a statistical consultant working for a real estate investment firm, your task is to develop a model to predict the selling price of a given home in Ames, Iowa. Your employer hopes to use this information to help assess whether the asking price of a house is higher or lower than the true value of the house. If the home is undervalued, it may be a good investment for the firm.
+
+Refer to the [codebook](http://jse.amstat.org/v19n3/decock/DataDocumentation.txt) for the Ames, Iowa dataset for more information.
+
+See the Appendix for code.
+
+* * *
+
+# Training Data and relevant packages
+
+In order to better assess the quality of the model you will produce, the data have been randomly divided into three separate pieces: a training data set, a testing data set, and a validation data set. For now we will load the training data set, the others will be loaded and used later.
+
+```{r echo = FALSE, message = FALSE}
+
+knitr::opts_chunk$set(comment = NA)
+options("scipen" = 100)
+
+load("ames_train.Rdata")
+```
+
+Use the code block below to load any necessary packages.
+
+```{r echo = FALSE, message = FALSE, warning = FALSE}
+
+library(MASS)
+library(BAS)
+library(broom)
+library(dplyr)
+library(expss)
+library(forcats)
+library(GGally)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(Metrics)
+library(scales)
+library(statsr)
+library(tidyr)
+library(viridis)
+
+#Numerical categories were converted to factor variables.
+ames_train$Overall.Qual <- as.factor(ames_train$Overall.Qual)
+ames_train$Overall.Cond <- as.factor(ames_train$Overall.Cond)
+```
+
+* * *
+
+# Part 1 : Exploratory Data Analysis (EDA)
+
+When you first get your data, it's very tempting to immediately begin fitting models and assessing how they perform.  However, before you begin modeling, it's absolutely essential to explore the structure of the data and the relationships between the variables in the data set.
+
+Do a detailed EDA of the `ames_train` data set, to learn about the structure of the data and the relationships between the variables in the data set (refer to Introduction to Probability and Data, Week 2, for a reminder about EDA if needed). Your EDA should involve creating and reviewing many plots/graphs and considering the patterns and relationships you see. 
+
+After you have explored completely, submit the three graphs/plots that you found most informative during your EDA process, and briefly explain what you learned from each (why you found each informative).
+
+* * *
+
+The Test and Validation sets only have observations with `Sale.Condition` *Normal*, so the Training set was filtered only for houses with `Sale.Condition` *Normal*.  This reduces the observations in `ames_train` from 1000 to 834.
+
+```{r echo = FALSE}
+  
+#Only Normal are considered.
+ames_train <- ames_train %>%
+  filter(Sale.Condition == "Normal") %>%
+  select(-Sale.Condition)
+
+#For output in Appendix.
+ames_train_EDA <- ames_train
+```
+
+Variables can be broadly grouped into categorical and numerical.  Several of the categorical variables have several NAs. These were noted and will be addressed later in the analysis.  See Appendix for full summary of categorical and numerical variables.
+
+`PID` was removed as it is not a predictor. `Utilities` was removed as all observations have the same value.  `Lot.Frontage`, `Mas.Vnr.Area`, and `Garage.Yr.Blt` were removed as numerical variables with NAs.  See Appendix for details.
+
+
+```{r echo = FALSE, results = FALSE}
+
+#Factor Variables.
+ames_train_NAs <- ames_train[colSums(is.na(ames_train)) != 0]
+summary(ames_train_NAs[!(sapply(ames_train_NAs, is.factor))])
+
+#Remove Variables
+ames_train <- ames_train %>%
+  select(-PID, -Utilities, -Lot.Frontage, -Mas.Vnr.Area, -Garage.Yr.Blt)
+
+#Factor Variables.
+ames_train_NAs <- ames_train[colSums(is.na(ames_train)) != 0]
+sort(colSums(is.na(ames_train_NAs)), decreasing = TRUE)
+
+ames_train$Alley <- addNA(ames_train$Alley)
+ames_train$Bsmt.Qual <- addNA(ames_train$Bsmt.Qual)
+ames_train$Bsmt.Cond <- addNA(ames_train$Bsmt.Cond)
+ames_train$Bsmt.Exposure <- addNA(ames_train$Bsmt.Exposure)
+ames_train$BsmtFin.Type.1 <- addNA(ames_train$BsmtFin.Type.1)
+ames_train$BsmtFin.Type.2 <- addNA(ames_train$BsmtFin.Type.2)
+ames_train$Fireplace.Qu <- addNA(ames_train$Fireplace.Qu)
+ames_train$Garage.Type <- addNA(ames_train$Garage.Type)
+ames_train$Garage.Finish <- addNA(ames_train$Garage.Finish)
+ames_train$Garage.Qual <- addNA(ames_train$Garage.Qual)
+ames_train$Garage.Cond <- addNA(ames_train$Garage.Cond)
+ames_train$Fence <- addNA(ames_train$Fence)
+ames_train$Misc.Feature <- addNA(ames_train$Misc.Feature)
+ames_train$Pool.QC <- addNA(ames_train$Pool.QC)
+```
+
+After exploring the variables, I found the following graphs interesting to warrant further exploration.
+
+Price would be expected to increase as area of the house does.  In addition, one would expect larger houses to have more bedrooms.  The first graph provides support to these assumptions.
+
+```{r echo = FALSE}
+
+#Price vs Area and Number of Bedrooms.
+g1 <- ggplot(ames_train, aes(x = area, y = price, color = as.factor(Bedroom.AbvGr)))
+#Scatter and Regression Lines.
+g1 <- g1 + geom_point(size = 2, alpha = 0.7) + geom_smooth(formula = y ~ x, method = 'lm', se = FALSE)
+#Title. 
+g1 <- g1 + ggtitle("Price vs Area and Number of Bedrooms")
+#X-axis
+g1 <- g1 + scale_x_continuous(name = "Area (sq. ft.)", labels = comma)
+#Y-axis.
+g1 <- g1 + scale_y_continuous(name = "Price", labels = dollar)
+#Virids Color Scheme.
+g1 <- g1 + scale_color_viridis("Bedrooms", discrete = TRUE)
+#Modify labels and text.
+g1 <- g1 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"))
+g1
+```
+
+Different neighborhoods in an urbanized area would be expected to vary in worth.  The price of the houses by neighborhood, ascending by median, demonstrates that this appears to be true.
+
+```{r echo = FALSE, warning = FALSE}
+
+#Price vs Neighborhood.
+g2 <- ggplot(ames_train, aes(x = fct_reorder(Neighborhood, price, .fun = 'median'), y = price))
+#Violin and Box Plot.
+g2 <- g2 + geom_violin(color = viridis(7)[5], width = 1.3) + geom_boxplot(color = viridis(7)[3], width = 0.2)
+#Title. 
+g2 <- g2 + ggtitle("Price vs Neighborhood")
+#X-axis
+g2 <- g2 + scale_x_discrete(name = "Neighborhood")
+#Y-axis.
+g2 <- g2 + scale_y_continuous(name = "Price", labels = dollar)
+#Modify labels and text.
+g2 <- g2 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"),
+                 legend.position = "none")
+g2
+```
+
+Lastly, I explored the year homes were built and their overall quality measurement.  Although these relationships appear to be complicated, there seems to be a sharp increase in price and quality of homes after 1990.
+
+```{r echo = FALSE}
+
+#Price vs Year Built and Overall Quality.
+g3 <- ggplot(data = ames_train, mapping = aes(x = Year.Built, y = price, color = Overall.Qual))
+#Violin & Box Plot.
+g3 <- g3 + geom_point(size = 2, alpha = 0.7) + geom_smooth(formula = y ~ x, method = 'lm', se = FALSE)
+#Title. 
+g3 <- g3 + ggtitle("Price vs Year Built and Overall Quality")
+#X-axis
+g3 <- g3 + scale_x_continuous("Year Built")
+#Y-axis.
+g3 <- g3 + scale_y_continuous("Price", labels = dollar)
+#Virids Color Scheme.
+g3 <- g3 + scale_color_viridis("Overall Quality", discrete = TRUE,
+                               labels = c("Very Poor", "Poor", "Fair", "Below Average", "Average",
+                                          "Above Average", "Good", "Very Good", "Excellent", "Very Excellent"))
+#Modify labels and text.
+g3 <- g3 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"))
+g3
+```
+
+* * *
+
+# Part 2 - Development and assessment of an initial model, following a semi-guided process of analysis
+
+## 2.1 An Initial Model
+In building a model, it is often useful to start by creating a simple, intuitive initial model based on the results of the exploratory data analysis. (Note: The goal at this stage is **not** to identify the "best" possible model but rather to choose a reasonable and understandable starting point. Later you will expand and revise this model to create your final model.
+
+Based on your EDA, select *at most* 10 predictor variables from `ames_train` and create a linear model for `price` (or a transformed version of price) using those variables. Provide the *R code* and the *summary output table* for your model, a *brief justification* for the variables you have chosen, and a *brief discussion* of the model results in context (focused on the variables that appear to be important predictors and how they relate to sales price).
+
+* * *
+
+`area`, `Bedroom.AbvGr`, `Full.Bath`, `Half.Bath`, `Neighborhood`, `Overall.Qual`, `Year.Built`, and `Year.Remod.Add` were chosen as predictors for `price`.  These variables seem to adequately convey what would affect the price of a home, based on common conversations and the Exploratory Data Analysis.
+
+```{r echo = FALSE, message = FALSE}
+
+#Subset preliminary model.
+ames_train_prelim <- ames_train %>%
+  select(price,
+         area,
+         Bedroom.AbvGr,
+         Full.Bath,
+         Half.Bath,
+         Neighborhood,
+         Overall.Qual,
+         Year.Built,
+         Year.Remod.Add)
+
+prelim_model <- lm(price ~ ., data = ames_train_prelim)
+summary(prelim_model)
+```
+
+Based on the simple linear model of our preliminary variables, the Adjusted R<sup>2</sup> is 0.8799, which means approximately 88% of the variability in price can be explained by eight variables for the 1000 observed houses in the training data set.  Furthermore, looking at p-values, five numerical variables are significant at α = 0.001, and the sixth is very close.
+
+For Neighborhood and Overall Quality, the two categorical variables selected, several individual levels are significant at α = 0.01 and α = 0.001.  *Northridge Heights*, *Northridge*, *Green Hills*, and *Timber*, four of the top 5 neighborhoods by price, are notable in the initial linear regression model as significant. Several other neighborhoods are also significant at various levels.  Overall Quality of 8, 9, and 10 have the highest significance as predictors.  This numerical analysis agrees with observations in the graphs from the Exploratory Data Analysis.
+
+Adjusted R<sup>2</sup> and p-values will explored further in the upcoming Model Selection process.
+
+* * *
+
+## 2.2 Model Selection
+
+Now either using `BAS` another stepwise selection procedure choose the "best" model you can, using your initial model as your starting point. Try at least two different model selection methods and compare their results. Do they both arrive at the same model or do they disagree? What do you think this means?
+
+* * *
+
+Choosing backward selection by p-value, we note from the above summary that all eight predictor variables are significant at α = 0.01.  No variable is eliminated using this method.
+
+We will compare this to forward selection by Adjusted R<sup>2</sup>.
+
+```{r echo = FALSE}
+
+#Takes a data frame and number of predictor to next choose for the highest Adjusted R2.
+#Returns a dataframe with list of selected variables along with previously chosen variables
+#and corresponding Adjusted R squared.
+forward_r2 <- function(df) {
+  
+  #Number of variables.
+  num_of_vars <- dim(df)[2]
+  #Number of predictors calculated.
+  predictor_num <- 1
+  #Adjusted R2 to be greater than.
+  prev_R2 <- 0
+  #Iterator
+  improvement <- TRUE
+  #
+  final_predictors <- NULL
+  final_r2 <- NULL
+  
+  
+  #Iterate while Adjusted R2 increases.
+  while (improvement) {
+    
+    #Lists are initialized as empty
+    predictors <- NULL
+    positions <- NULL
+    r2 <- NULL
+    
+    for (x in c((predictor_num + 1):num_of_vars)) {
+
+      positions = c(positions, x)
+      #If we are selecting the first predictor, only include that one.
+      #Otherwise, include all predictors chosen thus far and the selected.
+      if (predictor_num == 1) {
+        predictors <- c(predictors, colnames(df[x]))  
+      } else if (predictor_num == 2) {
+        predictors <- c(predictors, paste(colnames(df[2]),
+                                          colnames(df[x]),
+                                          sep = " + "))
+      } else {
+        predictors <- c(predictors, paste("Previous Predictors",
+                                          colnames(df[x]),
+                                          sep = " + "))
+      }
+      
+      #Make a temp dataframe with only the chosen predictors and the current selected one.
+      temp_df <- df %>%
+        select(colnames(df[c(1:predictor_num, x)]))
+      
+      #Retrieve the Adjusted R squared from that model.
+      temp_r2 <- summary(lm(price ~ ., data = temp_df))$adj.r.squared
+      r2 <- c(r2, temp_r2)
+    }
+    
+    #Create a dataframe from the three lists.
+    r2_values <- data.frame("Predictor_Variables" = predictors,
+                            "Positions" = positions,
+                            "Adjusted_R2" = r2) %>%
+      arrange(desc(r2))
+    
+    high_pred <- r2_values$Predictor_Variables[1]
+    pred_pos <- r2_values$Positions[1]
+    high_r2 <- r2_values$Adjusted_R2[1]
+    
+    if (high_r2 > prev_R2) {
+      
+      #Add the predictor(s) with the highest Adjusted R2 thus far.
+      final_predictors <- c(final_predictors, high_pred)
+      final_r2 <- c(final_r2, high_r2)
+      
+      #One of the variables is the price.
+      if (predictor_num < num_of_vars - 1) {
+
+        if (pred_pos == num_of_vars) {
+          #Reorder the df for the next iteration.
+          df <- df[c(1 : predictor_num, pred_pos, (predictor_num + 1) : (pred_pos - 1))]
+          
+        } else if ((predictor_num + 1) < pred_pos) {
+          #Reorder the df for the next iteration.
+          df <- df[c(1 : predictor_num, pred_pos, (predictor_num + 1) : (pred_pos - 1), (pred_pos + 1) : num_of_vars)]
+        }
+                
+        #Increase the number of predictors for next iteration.
+        predictor_num <- predictor_num + 1
+        #Increase the Adjusted R2 for next iteration.
+        prev_R2 <- high_r2
+        
+      } else {
+        #No more variables remaining.
+        improvement <- FALSE
+      }
+      
+    } else {
+      #Adjusted R2 did not increase.
+      improvement <- FALSE
+    }
+  }
+  model_selection <- data.frame("Predictor_Variables" = final_predictors,
+                                "Adjusted_R2" = final_r2)
+  model_selection
+}
+
+#Model Selection.
+forward_r2(ames_train_prelim)
+```
+
+Since every variable in the initial selection increases the Adjusted R<sup>2</sup>, it is left in the model.  
+
+Backward selection by p-values emphasizes the significance of the predictors, and forward selection by Adjusted R<sup>2</sup> emphasizes the variability of price that can be explained by these predictors.  Both selection processes yield the same result, which signifies a good starting point for the rest of the analysis.
+
+* * *
+
+# 2.3 Initial Model Residuals
+One way to assess the performance of a model is to examine the model's residuals. In the space below, create a residual plot for your preferred model from above and use it to assess whether your model appears to fit the data well. Comment on any interesting structure in the residual plot (trend, outliers, etc.) and briefly discuss potential implications it may have for your model and inference / prediction you might produce.
+
+* * *
+
+The Residual Plots for all numerical predictors are shown below. For Area, Number of Bedrooms, and Number of Bathrooms, the residuals appear to be randomly dispersed about y = 0.  The vast majority of houses have 2-4 bedrooms, 1 or 2 full bathrooms, and 1 or 2 half bathrooms, so there is a higher concentration and spread at those values.  For Year Built and Remodel Year, an interesting pattern of heteroscedasticity may be emerging.  That is, as the year built or remodel increases, so does the spread of residuals.  This seems to be more pronounced for Year Built than Remodel Year.  This will be addressed in the revised model.
+
+Using the definition of outliers as residuals that are outside of three times the standard deviation of the residuals, there are nine positive outliers and two negative outliers. This is about 1.3% of the remaining 834 observations.  There is no need to remove these observations (highlighted in blue), but they will be noted as the analysis continues.
+
+```{r echo = FALSE, fig.height = 6, fig.width = 9}
+
+#Include columns for residuals and outliers.
+ames_train_prelim <- ames_train_prelim %>%
+  mutate(price_resid = residuals(prelim_model),
+         outliers = ifelse((price_resid >= 0) & (price_resid >= 3*sd(price_resid)), "yes",
+                           ifelse((price_resid <= 0) & (price_resid <= -3*sd(price_resid)), "yes", "no")))
+
+#Appends identical attributes to residual plots.
+residual_gg_helper <- function(gg_object) {
+  #Scatter
+  gg_object <- gg_object + geom_point(aes(color = outliers, alpha = outliers), size = 2)
+  #Best Fit.
+  gg_object <- gg_object + stat_smooth(formula = y ~ x, method = "lm", color = viridis(8)[1], size = 0.6, se = FALSE)
+  #Viridis Color Scheme
+  gg_object <- gg_object + scale_color_manual(values = c(viridis(8)[5], viridis(8)[3]))
+  gg_object <- gg_object + scale_alpha_manual(values = c(0.3, 1))
+  #Modify labels and text.
+  gg_object <- gg_object + theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+                                 axis.text.x = element_text(hjust = 1, size = 8, angle = 55),
+                                 axis.title.x = element_text(size = 8, face = "bold"),
+                                 axis.text.y = element_text(size = 8),
+                                 axis.title.y = element_text(hjust = 0.5, size = 8, face = "bold"),
+                                 legend.position = "none")
+  return(gg_object)
+}
+
+#Residual Values vs Area.
+g4 <- ggplot(ames_train_prelim, aes(x = area, y = price_resid))
+#Title.
+g4 <- g4 + ggtitle("Residual Value vs Area")
+#X-axis & Y-axis.
+g4 <- g4 + scale_x_continuous("Area (sq. ft.)", labels = comma) + ylab("Residual Value")
+#Additional attributes.
+g4 <- residual_gg_helper(g4)
+
+#Residual Values vs Number of Bedrooms.
+g5 <- ggplot(ames_train_prelim, aes(x = Bedroom.AbvGr, y = price_resid))
+#Title.
+g5 <- g5 + ggtitle("Residual Value vs Number of Bedrooms")
+#X-axis & Y-axis.
+g5 <- g5 + scale_x_continuous("Number of Bedrooms") + ylab("Residual Value")
+#Additional attributes.
+g5 <- residual_gg_helper(g5)
+
+#Residual Values vs Year Built.
+g6 <- ggplot(ames_train_prelim, aes(x = Year.Built, y = price_resid))
+#Title.
+g6 <- g6 + ggtitle("Residual Value vs Year Built")
+#X-axis & Y-axis.
+g6 <- g6 + scale_x_continuous("Year Built") + ylab("Residual Value")
+#Additional attributes.
+g6 <- residual_gg_helper(g6)
+
+#Residual Values vs Remodel Year.
+g7 <- ggplot(ames_train_prelim, aes(x = Year.Remod.Add, y = price_resid))
+#Title.
+g7 <- g7 + ggtitle("Residual Value vs Remodel Year")
+#X-axis & Y-axis.
+g7 <- g7 + scale_x_continuous("Remodel Year") + ylab("Residual Value")
+#Additional attributes.
+g7 <- residual_gg_helper(g7)
+
+#Residual Values vs Number of Full Bathrooms.
+g8 <- ggplot(ames_train_prelim, aes(x = Full.Bath, y = price_resid))
+#Title.
+g8 <- g8 + ggtitle("Residual Value vs Number of Full Bathrooms")
+#X-axis & Y-axis.
+g8 <- g8 + scale_x_continuous("Number of Bathrooms") + ylab("Residual Value")
+#Additional attributes.
+g8 <- residual_gg_helper(g8)
+
+#Residual Values vs Number of Half Bathrooms.
+g9 <- ggplot(ames_train_prelim, aes(x = Full.Bath, y = price_resid))
+#Title.
+g9 <- g9 + ggtitle("Residual Value vs Number of Half Bathrooms")
+#X-axis & Y-axis.
+g9 <- g9 + scale_x_continuous("Number of Bathrooms") + ylab("Residual Value")
+#Additional attributes.
+g9 <- residual_gg_helper(g9)
+
+#Create Grid.
+grid.arrange(g4, g5, g6, g7, g8, g9,
+             layout_matrix = matrix(rbind(c(1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2),
+                                          c(3, 3, 3, 3, 3, NA, 4, 4, 4, 4, 4),
+                                          c(5, 5, 5, 5, 5, NA, 6, 6, 6, 6, 6)),
+                                    ncol = 11))
+```
+
+* * *
+
+##  2.4 Initial Model RMSE
+
+You can calculate it directly based on the model output. Be specific about the units of your RMSE (depending on whether you transformed your response variable). The value you report will be more meaningful if it is in the original units (dollars).
+
+* * *
+
+The RMSE of the training data using the initial model is $24,407.13.  This represents the spread, or noise, of the residuals.
+
+```{r echo = FALSE}
+
+rmse(ames_train_prelim$price, prelim_model$fitted)
+```
+
+* * *
+
+### 2.5 Overfitting 
+
+The process of building a model generally involves starting with an initial model (as you have done above), identifying its shortcomings, and adapting the model accordingly. This process may be repeated several times until the model fits the data reasonably well. However, the model may do well on training data but perform poorly out-of-sample (meaning, on a dataset other than the original training data) because the model is overly-tuned to specifically fit the training data. This is called â€œoverfitting.â€ To determine whether overfitting is occurring on a model, compare the performance of a model on both in-sample and out-of-sample data sets. To look at performance of your initial model on out-of-sample data, you will use the data set `ames_test`.
+
+```{r echo = FALSE, message = FALSE}
+
+load("ames_test.Rdata")
+#Numerical categories were converted to factor variables.
+ames_test$Overall.Qual <- as.factor(ames_test$Overall.Qual)
+ames_test$Overall.Cond <- as.factor(ames_test$Overall.Cond)
+```
+
+Use your model from above to generate predictions for the housing prices in the test data set.  Are the predictions significantly more accurate (compared to the actual sales prices) for the training data than the test data?  Why or why not? Briefly explain how you determined that (what steps or processes did you use)?
+
+* * *
+
+First, it is important to note that one observation was removed.  In the test data, there is a house in the Neighborhood *Landmark*.  *Landmark* was not in the training data, and is thus not an individual level in the preliminary prediction model.
+
+```{r echo = FALSE}
+
+#Subset preliminary model.
+ames_test_prelim <- ames_test %>%
+  select(price,
+         area,
+         Bedroom.AbvGr,
+         Half.Bath,
+         Full.Bath,
+         Neighborhood,
+         Overall.Qual,
+         Year.Built,
+         Year.Remod.Add)
+
+ames_test_prelim[ames_test_prelim$Neighborhood == "Landmrk", ]
+```
+
+The RMSE of the rest of the testing data using the initial model is $25.674.43.  This is about $1,200 more than that of the training data.  Since there is more spread, or noise, the preliminary prediction model is more accurate on the training data than the testing data, signifying overfitting may be an issue. 
+
+```{r echo = FALSE}
+
+ames_test_prelim <- ames_test_prelim[ames_test_prelim$Neighborhood != "Landmrk", ]
+prelim_test <- predict(prelim_model, ames_test_prelim)
+
+rmse(ames_test_prelim$price, prelim_test)
+```
+
+* * *
+
+**Note to the learner:** If in real-life practice this out-of-sample analysis shows evidence that the training data fits your model a lot better than the test data, it is probably a good idea to go back and revise the model (usually by simplifying the model) to reduce this overfitting. For simplicity, we do not ask you to do this on the assignment, however.
+
+# Part 3 Development of a Final Model
+
+Now that you have developed an initial model to use as a baseline, create a final model with *at most* 20 variables to predict housing prices in Ames, IA, selecting from the full array of variables in the dataset and using any of the tools that we introduced in this specialization.  
+
+Carefully document the process that you used to come up with your final model, so that you can answer the questions below.
+
+* * *
+
+## 3.1 Transformation
+
+Did you decide to transform any variables?  Why or why not? Explain in a few sentences.
+
+* * *
+
+```{r echo = FALSE, fig.height = 3.5}
+
+#Histogram.
+price_train <- ggplot(ames_train, aes(x = price))
+price_train <- price_train + geom_histogram(bins = 30, fill = viridis(7)[4])
+#Title.
+price_train <- price_train + ggtitle("")
+#X-axis
+price_train <- price_train + scale_x_continuous(name = "House Prices (Training Set)", expand = c(0,0), labels = dollar)
+#Y-axis.
+price_train <- price_train + scale_y_continuous(name = "Frequency of Price", limits = c(0, 180), expand = c(0,0))
+#Modify labels and text.
+price_train <- price_train + theme(plot.title = element_text(hjust = -2.5, size = 14, face = "bold"),
+                                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55), 
+                                 axis.title.x = element_text(size = 12, face = "bold"),
+                                 axis.text.y = element_text(size = 10),
+                                 axis.title.y = element_text(size = 12, face = "bold"))
+
+#Histogram.
+price_test <- ggplot(ames_test, aes(x = price))
+price_test <- price_test + geom_histogram(bins = 30, fill = viridis(7)[4])
+#Title.
+price_test <- price_test + ggtitle("Distribution of Houses by Price")
+#X-axis
+price_test <- price_test + scale_x_continuous(name = "House Prices (Testing Set)", expand = c(0,0), labels = dollar)
+#Y-axis.
+price_test <- price_test + scale_y_continuous(name = "", limits = c(0, 180), expand = c(0,0))
+#Modify labels and text.
+price_test <- price_test + theme(plot.title = element_text(hjust = -2.4, size = 14, face = "bold"),
+                                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55), 
+                                 axis.title.x = element_text(size = 12, face = "bold"),
+                                 axis.text.y = element_text(size = 10),
+                                 axis.title.y = element_text(size = 12, face = "bold"))
+
+grid.arrange(price_train, price_test,
+             layout_matrix = matrix(c(1, 2),
+                                    ncol = 2))
+```
+
+First, the dependent variable, `price` is log transformed.  It is clear from `ames_train` and `ames_test` that `price` is right skewed.
+
+```{r echo = FALSE}
+ames_train$price = log(ames_train$price)
+ames_test$price = log(ames_test$price)
+```
+
+
+To account for the possible heteroscedascity observed in Initial Model Residuals, `Year.Built` and `Year.Remod.Add` were converted to age by subtracting from 2020, and then log transformed.  Several other variables were log transformed to see if an improvement occured.
+
+```{r echo = FALSE}
+
+#Select only relevant variables.
+ames_train_transf <- ames_train %>%
+  select(price, Year.Built, Year.Remod.Add, area, Lot.Area, Garage.Area, Total.Bsmt.SF, X1st.Flr.SF, X2nd.Flr.SF)
+
+predictor <- NULL
+r2 <- NULL
+log_r2 <- NULL
+
+
+for (p in colnames(ames_train_transf)[-1]) {
+  
+  temp_r2 <- summary(lm(as.formula(paste("price ~ ", p, sep = "")),
+                        data = ames_train_transf))$r.squared
+  if (p %in% c("Year.Built", "Year.Remod.Add")) {
+    temp_log_r2 <- summary(lm(as.formula(paste("price ~ log(2020 - ", p, ")", sep = "")),
+                        data = ames_train_transf))$r.squared
+  } else {
+  temp_log_r2 <- summary(lm(as.formula(paste("price ~ log(", p, " + 1)", sep = "")),
+                        data = ames_train_transf))$r.squared
+  }
+  predictor <- c(predictor, p)
+  r2 <- c(r2, temp_r2)
+  log_r2 <- c(log_r2, temp_log_r2)
+}
+
+transformations <- data.frame("Predictor_Variables" = predictor,
+                              "R2_of_Predictor" = r2,
+                              "R2_of_log_Predictor" = log_r2)
+
+transformations
+```
+
+Of the numerical variables shown above, `House.Age` (derived from `Year.Built`), `area`, and `Lot.Area` show an increase of R<sup>2</sup> as a single predictor upon being transformed by log.
+
+
+```{r echo = FALSE}
+
+#Transform.
+ames_train_final <- ames_train %>%
+  mutate(House.Age = log(2020 - Year.Built),
+         Lot.Area = log(Lot.Area))
+
+ames_test_final <- ames_test %>%
+  mutate(House.Age = log(2020 - Year.Built),
+         Lot.Area = log(Lot.Area)) 
+```
+
+* * *
+
+## 3.2 Variable Interaction
+
+Did you decide to include any variable interactions? Why or why not? Explain in a few sentences.
+
+* * *
+
+`X1st.Flr.SF` and `X2nd.Flr.SF` were temporarily combined (see Variable Selection below), but not for the final model, as the coefficient for their sum will be in the model by defintion. As there are several different variables that are related to area, there are also several variables related to number and types of rooms.  Any sum  would be unnecessary.  
+
+`Yr.Sold` and `Mo.Sold` were combined into a `Date.Sold` variable.  The upcoming analysis will demonstrate if it is a useful predictor or not.
+
+Many categorical variables had 75% or more of the observations in one level.  These often overlapped with the majority level in another categorical variable.  However, no combinations were made.
+
+```{r echo = FALSE}
+
+ames_train_final <- ames_train_final %>%
+  mutate(Date.Sold = ifelse((Mo.Sold > 9),
+                             as.Date(paste(Yr.Sold,
+                                           Mo.Sold,
+                                           "01",
+                                           sep = "/"),
+                                     "%Y/%m/%d"),
+                             as.Date(paste(Yr.Sold,
+                                           paste("0",
+                                                 Mo.Sold,
+                                                 sep = ""),
+                                           "01",
+                                           sep = "/"),
+                                     "%Y/%m/%d")))
+```
+
+* * *
+
+## 3.3 Variable Selection
+
+What method did you use to select the variables you included? Why did you select the method you used? Explain in a few sentences.
+
+* * *
+
+The correlation of several variables related to area and number of rooms are charted below.  Notice that the created combined area of the `X1st.Flr.SF` and `X2nd.Flr.SF` floor is virtually identical to `area`. `area` will be removed. `Garage.Cars` is removed as it is very similar to `Garage.Area`.  There are some other correlated variables that will be kept note of.
+
+```{r echo = FALSE, message = FALSE}
+
+ggcorr(ames_train_final %>% 
+         mutate(X1st.X2nd.SF = X1st.Flr.SF + X2nd.Flr.SF) %>%
+         select(Lot.Area, area, X1st.Flr.SF, X2nd.Flr.SF, Garage.Area,
+                Garage.Cars, X1st.X2nd.SF, Total.Bsmt.SF, TotRms.AbvGrd, 
+                Kitchen.AbvGr, Bedroom.AbvGr, Full.Bath, Half.Bath),
+       label = TRUE) + scale_fill_viridis(direction = -1)
+```
+
+```{r echo = FALSE}
+
+ames_train_final <- ames_train_final %>%
+  select(-area, -Garage.Cars, -Year.Built)
+```
+
+The following output is the first twenty predictors from forward selection by Adjusted R<sup>2</sup>.  These will be used to select the final model.
+
+```{r echo = FALSE}
+
+forward_r2(ames_train_final)[1:20,]
+```
+
+* * *
+
+## 3.4 Model Testing
+
+How did testing the model on out-of-sample data affect whether or how you changed your model? Explain in a few sentences.
+
+* * *
+
+Similar to Section 2, several observations were removed removed from `ames_test`.  In the test data, there is a house in the Neighborhood *Landmark*.  *Landmark* was not in the training data, and is thus not an individual level in the preliminary prediction model. In addition, two observations with level *AsphShn* from `Exterior.1st` were removed from `ames_test`.  There were no observations that had these levels in `ames_train`.
+
+```{r echo = FALSE}
+
+ames_test_final %>%
+  filter(Exterior.1st == "AsphShn") %>%
+  select(PID, price, Exterior.1st, Neighborhood, Lot.Area, Year.Built)
+```
+
+```{r echo = FALSE}
+
+ames_test_final2 <- ames_test_final %>%
+  filter(Neighborhood != "Landmrk",
+         Exterior.1st != "AsphShn") %>%
+  mutate(BsmtFin.Type.1 = addNA(BsmtFin.Type.1))
+```
+
+As more predictors are included, the RMSE of `ames_train` decreases.  `ames_test` shows a general trend of decreasing, however, it increases with the addition of the 9th variable, and the difference in RMSE of `ames_train` and `ames_test` increases to over $2,000.
+
+```{r echo = FALSE}
+
+ames_train_final2 <- ames_train_final %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area, MS.Zoning, BsmtFin.SF.1, Central.Air,
+         Condition.1, BsmtFin.SF.2, Exterior.1st, Garage.Area, Bsmt.Unf.SF,
+         Fireplace.Qu, Kitchen.Qual, Functional, Year.Remod.Add)
+
+ames_test_final2 <- ames_test_final2 %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area, MS.Zoning, BsmtFin.SF.1, Central.Air,
+         Condition.1, BsmtFin.SF.2, Exterior.1st, Garage.Area, Bsmt.Unf.SF,
+         Fireplace.Qu, Kitchen.Qual, Functional, Year.Remod.Add)
+
+num_of_pred <- NULL
+rmse <- NULL
+dataset <- NULL
+
+#The dependent variable, price, has been log transformed.  Change it back for RMSE calculation.
+rmse_log <- function(obs, pred) {
+  obs <- exp(obs)
+  pred <- exp(pred)
+  return(rmse(obs, pred))
+}
+
+for (i in 2:21) {
+  temp_train_df <- ames_train_final2[, 1:i]
+  temp_test_df <- ames_test_final2[, 1:i]
+  temp_model <- lm(price ~ ., data = temp_train_df)
+  temp_predicted <- predict(temp_model, temp_train_df)
+  temp_tested <- predict(temp_model, temp_test_df)
+  
+  num_of_pred <- c(num_of_pred, i-1, i-1)
+  rmse <- c(rmse,
+            rmse_log(temp_train_df$price, temp_predicted),
+            rmse_log(temp_test_df$price, temp_tested))
+  dataset <- c(dataset, "Ames Train", "Ames Test")
+}
+
+rmse_df <- data.frame("Number_of_Predictors" = num_of_pred,
+                      "Root_Mean_Square_Error" = rmse,
+                      "Dataset" = dataset)
+
+#RMSE vs Number of Variables for ames_train and ames_test.
+g10 <- ggplot(rmse_df, aes(x = Number_of_Predictors, y = Root_Mean_Square_Error, color = Dataset))
+g10 <- g10 + geom_point(size = 7)
+#Title.
+g10 <- g10 + ggtitle("Number of Predictors vs RMSE for Training and Test Data")
+#X-axis & Y-axis.
+g10 <- g10 + scale_x_continuous("Number of Predictors") + scale_y_continuous("RMSE", labels = dollar)
+#Viridis Color Scheme
+g10 <- g10 + scale_color_manual(values = c(viridis(8)[6], viridis(8)[2]))
+#Modify labels and text.
+g10 <- g10 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+g10
+```
+
+```{r echo = FALSE}
+
+print(rmse_df %>%
+        filter(Number_of_Predictors %in% 7:11),
+      row.names = F)
+```
+
+I selected the first eight variables from above.
+
+The eight predictors, in order, are `Overall.Qual`, `Neighborhood`, `X1st.Flr.SF`, `X2nd.Flr.SF`,  `BsmtFin.Type.1`, `Overall.Cond`, log transform of `House.Age` (from `Year.Built`), and the log transform of `Lot.Area`.
+
+* * *
+
+## 3.5 Final Model
+
+Provide the summary table for your model.
+
+```{r echo = FALSE}
+
+ames_train_final3 <- ames_train_final2 %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area)
+
+final_model <- lm(price ~ ., ames_train_final3)
+
+summary(final_model)
+```
+
+* * *
+
+# Part 4 : Final Model Assessment
+
+## 4.1 Final Model Residual
+
+For your final model, create and briefly interpret an informative plot of the residuals.
+
+* * *
+### Linear Relationships Between x and y
+
+```{r echo = FALSE}
+
+#Include columns for residuals and outliers.
+ames_train_diagnostics <- ames_train_final3 %>%
+  mutate(price_resid = residuals(final_model),
+         outliers = ifelse((price_resid >= 0) & (price_resid >= 3*sd(price_resid)), "yes",
+                           ifelse((price_resid <= 0) & (price_resid <= -3*sd(price_resid)), "yes", "no")))
+
+#Appends identical attributes to residual plots.
+#Use residual_gg_helper from 2.3.
+
+#Residual Values vs First Floor Area.
+g11 <- ggplot(ames_train_diagnostics, aes(x = X1st.Flr.SF, y = price_resid))
+#Title.
+g11 <- g11 + ggtitle("Residual Value vs 1st Floor Area")
+#X-axis & Y-axis.
+g11 <- g11 + scale_x_continuous("Area (sq. ft.)", labels = comma) + ylab("Residual Value")
+#Additional attributes.
+g11 <- residual_gg_helper(g11)
+
+#Residual Values vs 2nd Floor Area.
+g12 <- ggplot(ames_train_diagnostics, aes(x = X2nd.Flr.SF, y = price_resid))
+#Title.
+g12 <- g12 + ggtitle("Residual Value vs 2nd Floor Area")
+#X-axis & Y-axis.
+g12 <- g12 + scale_x_continuous("Area (sq. ft.)", labels = comma) + ylab("Residual Value")
+#Additional attributes.
+g12 <- residual_gg_helper(g12)
+
+#Residual Values vs House Age.
+g14 <- ggplot(ames_train_diagnostics, aes(x = House.Age, y = price_resid))
+#Title.
+g14 <- g14 + ggtitle("Residual Value vs ln(House Age)")
+#X-axis & Y-axis.
+g14 <- g14 + scale_x_continuous("ln(House Age)") + ylab("Residual Value")
+#Additional attributes.
+g14 <- residual_gg_helper(g14)
+
+#Residual Values vs Lot Area.
+g15 <- ggplot(ames_train_diagnostics, aes(x = Lot.Area, y = price_resid))
+#Title.
+g15 <- g15 + ggtitle("Residual Value vs ln(Lot Area)")
+#X-axis & Y-axis.
+g15 <- g15 + scale_x_continuous("ln(Lot Area)") + ylab("Residual Value")
+#Additional attributes.
+g15 <- residual_gg_helper(g15)
+
+#Create Grid.
+grid.arrange(g11, g12, g14, g15,
+             layout_matrix = matrix(rbind(c(1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2),
+                                          c(4, 4, 4, 4, 4, NA, 5, 5, 5, 5, 5)),
+                                    ncol = 11))
+```
+
+### Nearly Normal Residuals
+
+There is a slight left skew, but the majority of the residuals fit a normal distribution.
+
+```{r echo = FALSE, fig.height = 3.5}
+
+#Histogram
+g16 <- ggplot(final_model, mapping = aes(x = .resid)) + geom_histogram(bins = 30, fill = viridis(5)[3])
+#Title.
+g16 <- g16 + ggtitle("Distribution of Residuals")
+#X-axis & Y-axis.
+g16 <- g16 + scale_x_continuous("Residual Value") + ylab("Frequency")
+#Modify labels and text.
+g16 <- g16 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+
+#Normal-QQ Plot
+g17 <- ggplot(data = final_model)
+g17 <- g17 + stat_qq(data = final_model, aes(sample = .resid), color = viridis(5)[3], size = 3, alpha = 0.4)
+g17 <- g17 + stat_qq_line(data = final_model, mapping = aes(sample = .resid), color = viridis(5)[1], size = 1)
+#Title.
+g17 <- g17 + ggtitle("Normal-QQ Plot")
+#X-axis & Y-axis.
+g17 <- g17 + scale_x_continuous("Theoretical Quantile") + scale_y_continuous("Standardized Residual")
+#Modify labels and text.
+g17 <- g17 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(size = 10), 
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+
+grid.arrange(g16, g17, layout_matrix = matrix(c(1, 2),
+                                              ncol = 2))
+```
+
+
+### Constant Variability of Residuals
+
+From both plots, it is clear there are about 15 - 20 fitted values whose residuals deviate from the others. Considering this is approximately 1.7 - 2.3% of the data in the model, the residuals seem to be of constant variability.
+
+```{r echo = FALSE, fig.height = 3.5}
+
+#Scatter of Residuals vs. Fitted.
+g18 <- ggplot(final_model, aes(x = .fitted, y = .resid))
+g18 <- g18 + geom_point(color = viridis(5)[3], size = 3, alpha = 0.4)
+##Horizontal Line.
+g18 <- g18 + geom_hline(yintercept = 0, col = viridis(5)[1], linetype = "dashed")
+#Title.
+g18 <- g18 + ggtitle("Residuals vs Fitted")
+#X-axis & Y-axis.
+g18 <- g18 + scale_x_continuous("Fitted Value") + scale_y_continuous("Residual Value")
+#Modify labels and text.
+g18 <- g18 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55), 
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+
+#Scatter of Absolute Value of Residuals vs. Fitted.
+g19 <- ggplot(final_model, aes(x = .fitted, y = abs(.resid)))
+g19 <- g19 + geom_point(color = viridis(5)[3], size = 3, alpha = 0.4)
+##Horizontal Line.
+g19 <- g19 + geom_hline(yintercept = 0, col = viridis(5)[1], linetype = "dashed")
+#Title.
+g19 <- g19 + ggtitle("Absolute Value of Residuals vs Fitted")
+#X-axis & Y-axis.
+g19 <- g19 + scale_x_continuous("Fitted Value") + scale_y_continuous("Absolute Value of Residual")
+#Modify labels and text.
+g19 <- g19 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+
+grid.arrange(g18, g19, layout_matrix = matrix(c(1, 2),
+                                              ncol = 2))
+```             
+
+### Independence of Residuals
+
+The houses were chosen as "individual residential properties sold in Ames, IA from 2006 to 2010".  The houses selected, and thus residuals, appear to be independent of one another.
+
+* * *
+
+## 4.2 Final Model RMSE
+
+For your final model, calculate and briefly comment on the RMSE.
+
+* * *
+
+The RMSE of `ames_train` is $17,890.80, and the RMSE of `ames_test` is $19,201.56.  The RMSE of `ames_test` has changed from above because the two observations with level *AsphShn* from `Exterior.1st` that were removed from are now included, as `Exterior.1st` is no longer a predictor.
+
+The spread of the actual price values of the test set is about $1,300 more than that of the training set.  Using more variables as predictors shows signs of overfitting.  The analyzed model, however, has a spread that is much less than the initial model from part 2, where both RMSE values are greater than $24,000.
+
+```{r echo = FALSE}
+
+#Training Set.
+final_train <- predict(final_model, ames_train_final3)
+rmse_log(ames_train_final3$price, final_train)
+
+#Test Set.
+ames_test_final3 <- ames_test_final %>%
+  filter(Neighborhood != "Landmrk") %>%
+  mutate(BsmtFin.Type.1 = addNA(BsmtFin.Type.1)) %>%
+   select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area) 
+
+final_test <- predict(final_model, ames_test_final3)
+rmse_log(ames_test_final3$price, final_test)
+```
+
+* * *
+
+## 4.3 Final Model Evaluation
+
+What are some strengths and weaknesses of your model?
+
+* * *
+
+The model has an Adjusted R<sup>2</sup> of 0.9293.  93% of the variance of price is explained by eight of the 81 variables. Furthermore, each of the eight predictors, whether it be numerical or at least one level in a categorical, is significant at the α = 0.001 level.
+
+The model is a very good fit for most of the data. However, the model is fit for only those homes with `Sale.Condition` that is *Normal*.  While the initial training set was a standard 1000 houses, filtering left only 834 to create the model.  This is [approximately 3.3%](https://www.census.gov/quickfacts/fact/table/amescityiowa/HSD410218#HSD410218) of the total.  It is important to stress that this model is specific to Ames, and would vary greatly in predictive power across the US.
+
+Many categorical variables have some levels with a large proportion of the observations, and some levels with a few or none.  `Neighborhood` and `Overall.Qual` are two examples, and also the first two predictors identified by forward selection.  It is possible that more houses in the levels with smaller totals could improve the model.
+
+Instead of `Neighborhood`, I think latitude and longitude values of each house, perhaps even zoning map sections, would be a more accurate predictor.
+
+* * * 
+
+### 4.4 Final Model Validation
+
+Testing your final model on a separate, validation data set is a great way to determine how your model will perform in real-life practice. 
+
+You will use the `ames_validation` dataset to do some additional assessment of your final model. Discuss your findings, be sure to mention:
+
+* What is the RMSE of your final model when applied to the validation data?  
+* How does this value compare to that of the training data and/or testing data?
+* What percentage of the 95% predictive confidence (or credible) intervals contain the true price of the house in the validation data set?  
+* From this result, does your final model properly reflect uncertainty?
+
+* * *
+
+The RMSE of `ames_validation` is $19,397.47, which is extremely similar to the RMSE of `ames_test` at $19,201.56.  This consistency is a good indicator that the model is a reasonable fit.
+
+```{r echo = FALSE}
+load("ames_validation.Rdata")
+
+ames_valid_final <- ames_validation %>%
+  mutate(price = log(price),
+         Overall.Qual = as.factor(Overall.Qual),
+         BsmtFin.Type.1 = addNA(BsmtFin.Type.1),
+         Overall.Cond = as.factor(Overall.Cond),
+         House.Age = log(2020 - Year.Built),
+         Lot.Area = log(Lot.Area)) %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area) 
+
+final_validation <- predict(final_model, ames_valid_final)
+
+rmse_log(ames_valid_final$price, final_validation)
+```
+
+The true proportion of `ames_test` prices that fall within the 95% prediction interval is 94.9%.  The true proportion of `ames_validation` prices that fall within the 95% prediction interval is 94.6%.
+
+Because both of these values are extremely close to 95%, the final model properly reflects uncertainty.
+
+```{r, echo = FALSE}
+
+#Retrieve prediction interval.  Find the percentage of price values in the prediction interval.
+
+#Ames Test.
+predict_test <- exp(predict(final_model, ames_test_final3, interval = "prediction"))
+mean(exp(ames_test_final3$price) > predict_test[,"lwr"] & exp(ames_test_final3$price) < predict_test[,"upr"])
+
+#Ames Validation.
+predict_valid <- exp(predict(final_model, ames_valid_final, interval = "prediction"))
+
+mean(exp(ames_valid_final$price) > predict_valid[,"lwr"] &
+                       exp(ames_valid_final$price) < predict_valid[,"upr"])
+```
+
+* * *
+
+# Part 5 : Conclusion
+
+Provide a brief summary of your results, and a brief discussion of what you have learned about the data and your model. 
+
+* * *
+
+The model provided by this analysis accurately predicts the price of approximately 95% of the sample houses in Ames, IA to within $39,000.  
+
+The most surprising predictor to me was `BsmtFin.Type.1`.  I skipped over it in the preliminary model without any hesitation.
+
+During my steps, I modified the data and model several times.  I removed outliers, removed levels, changed the order of predictors, and included extra predictors.  I found that the model chosen is quite robust and parsimonious.
+
+While not collinear, I found many of the variables to show some significant relationship with others.  I found it interesting how the RMSE quickly converged and did not vary much after fifteen variables.  Most of the variables added very little to the model.
+
+And interesting aspect of the data is that the observations were generally not uniformly distributed by variables, specifically the categorical variables.  For example, over 25% of homes are less than 20 years old, and over 50% are less than 50 years old.  Well over 90% of houses have an overall condition around average, there are very few that are poor or exceptional.  99% of houses do not have a pool. 80% of houses have no fence. Over 75% of houses have a gable roof style.  There are many other examples.  This seems to be a reason why many variables added very little to no change to the model.
+
+Finally, I learned to not underestimate log transforming variables, including the dependent variable.
+
+* * *
+
+# Appendix
+
+* * *
+
+## Training Data and relevant packages
+```{r eval = FALSE}
+
+knitr::opts_chunk$set(comment = NA)
+options("scipen" = 100)
+
+load("ames_train.Rdata")
+
+library(MASS)
+library(BAS)
+library(broom)
+library(dplyr)
+library(expss)
+library(forcats)
+library(GGally)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(Metrics)
+library(scales)
+library(statsr)
+library(tidyr)
+library(viridis)
+
+
+#Numerical categories were converted to factor variables.
+ames_train$Overall.Qual <- as.factor(ames_train$Overall.Qual)
+ames_train$Overall.Cond <- as.factor(ames_train$Overall.Cond)
+```
+
+Only level *Normal* are considered from `Sale.Condition`.
+```{r eval = FALSE}
+
+ames_train <- ames_train %>%
+  filter(Sale.Condition == "Normal") %>%
+  select(-Sale.Condition)
+
+#For output in Appendix.
+ames_train_EDA <- ames_train
+```
+
+## Part 1 : Exploratory Data Analysis (EDA)
+
+All Numerical Variables.
+```{r}
+summary(ames_train_EDA[!(sapply(ames_train_EDA, is.factor))])
+```
+
+All Factor Variables.
+```{r}
+summary(ames_train_EDA[sapply(ames_train_EDA, is.factor)])
+```
+
+Numerical Variables with NAs.
+```{r}
+
+ames_train_NAs <- ames_train_EDA[colSums(is.na(ames_train_EDA)) != 0]
+summary(ames_train_NAs[!(sapply(ames_train_NAs, is.factor))])
+```
+
+Remove Variables.
+```{r}
+
+ames_train_EDA <- ames_train_EDA %>%
+  select(-PID, -Utilities, -Lot.Frontage, -Mas.Vnr.Area, -Garage.Yr.Blt)
+```
+
+Factor Variables with NAs.
+```{r}
+
+ames_train_NAs <- ames_train_EDA[colSums(is.na(ames_train_EDA)) != 0]
+sort(colSums(is.na(ames_train_NAs)), decreasing = TRUE)
+```
+
+Add NA as a factor level.
+```{r eval = FALSE}
+ames_train$Alley <- addNA(ames_train$Alley)
+ames_train$Bsmt.Qual <- addNA(ames_train$Bsmt.Qual)
+ames_train$Bsmt.Cond <- addNA(ames_train$Bsmt.Cond)
+ames_train$Bsmt.Exposure <- addNA(ames_train$Bsmt.Exposure)
+ames_train$BsmtFin.Type.1 <- addNA(ames_train$BsmtFin.Type.1)
+ames_train$BsmtFin.Type.2 <- addNA(ames_train$BsmtFin.Type.2)
+ames_train$Fireplace.Qu <- addNA(ames_train$Fireplace.Qu)
+ames_train$Garage.Type <- addNA(ames_train$Garage.Type)
+ames_train$Garage.Finish <- addNA(ames_train$Garage.Finish)
+ames_train$Garage.Qual <- addNA(ames_train$Garage.Qual)
+ames_train$Garage.Cond <- addNA(ames_train$Garage.Cond)
+ames_train$Fence <- addNA(ames_train$Fence)
+ames_train$Misc.Feature <- addNA(ames_train$Misc.Feature)
+ames_train$Pool.QC <- addNA(ames_train$Pool.QC)
+```
+
+Price vs Area and Number of Bedrooms.
+```{r eval = FALSE}
+
+g1 <- ggplot(ames_train, aes(x = area, y = price, color = as.factor(Bedroom.AbvGr)))
+#Scatter and Regression Lines.
+g1 <- g1 + geom_point(size = 2, alpha = 0.7) + geom_smooth(formula = y ~ x, method = 'lm', se = FALSE)
+#Title. 
+g1 <- g1 + ggtitle("Price vs Area and Number of Bedrooms")
+#X-axis
+g1 <- g1 + scale_x_continuous(name = "Area (sq. ft.)", labels = comma)
+#Y-axis.
+g1 <- g1 + scale_y_continuous(name = "Price", labels = dollar)
+#Virids Color Scheme.
+g1 <- g1 + scale_color_viridis("Bedrooms", discrete = TRUE)
+#Modify labels and text.
+g1 <- g1 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"))
+g1
+```
+
+Price vs Neighborhood.
+```{r eval = FALSE}
+
+g2 <- ggplot(ames_train, aes(x = fct_reorder(Neighborhood, price, .fun = 'median'), y = price))
+#Violin and Box Plot.
+g2 <- g2 + geom_violin(color = viridis(7)[5], width = 1.3) + geom_boxplot(color = viridis(7)[3], width = 0.2)
+#Title. 
+g2 <- g2 + ggtitle("Price vs Neighborhood")
+#X-axis
+g2 <- g2 + scale_x_discrete(name = "Neighborhood")
+#Y-axis.
+g2 <- g2 + scale_y_continuous(name = "Price", labels = dollar)
+#Modify labels and text.
+g2 <- g2 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"),
+                 legend.position = "none")
+g2
+```
+
+Price vs Year Built and Overall Quality.
+```{r eval = FALSE}
+
+g3 <- ggplot(data = ames_train, mapping = aes(x = Year.Built, y = price, color = Overall.Qual))
+#Violin & Box Plot.
+g3 <- g3 + geom_point(size = 2, alpha = 0.7)
+#Title. 
+g3 <- g3 + ggtitle("Price vs Year Built and Overall Quality")
+#X-axis
+g3 <- g3 + scale_x_continuous("Year Built")
+#Y-axis.
+g3 <- g3 + scale_y_continuous("Price", labels = dollar)
+#Virids Color Scheme.
+g3 <- g3 + scale_color_viridis("Overall Quality", discrete = TRUE,
+                               labels = c("Very Poor", "Poor", "Fair", "Below Average", "Average",
+                                          "Above Average", "Good", "Very Good", "Excellent", "Very Excellent"))
+#Modify labels and text.
+g3 <- g3 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                 axis.title.x = element_text(size = 12, face = "bold"),
+                 axis.text.y = element_text(size = 10),
+                 axis.title.y = element_text(hjust = 0.5, size = 12, face = "bold"))
+g3
+```
+
+* * *
+
+## Part 2 : Development and assessment of an initial model, following a semi-guided process of analysis
+
+### 2.1 An Initial Model
+
+Subset preliminary model.
+```{r eval = FALSE}
+
+ames_train_prelim <- ames_train %>%
+  select(price,
+         area,
+         Bedroom.AbvGr,
+         Full.Bath,
+         Half.Bath,
+         Neighborhood,
+         Overall.Qual,
+         Year.Built,
+         Year.Remod.Add)
+
+prelim_model <- lm(price ~ ., data = ames_train_prelim)
+summary(prelim_model)
+```
+
+* * *
+
+### 2.2 Model Selection
+
+```{r eval = FALSE}
+
+#Takes a data frame and number of predictor to next choose for the highest Adjusted R2.
+#Returns a dataframe with list of selected variables along with previously chosen variables
+#and corresponding Adjusted R squared.
+forward_r2 <- function(df) {
+  
+  #Number of variables.
+  num_of_vars <- dim(df)[2]
+  #Number of predictors calculated.
+  predictor_num <- 1
+  #Adjusted R2 to be greater than.
+  prev_R2 <- 0
+  #Iterator
+  improvement <- TRUE
+  #
+  final_predictors <- NULL
+  final_r2 <- NULL
+  
+  
+  #Iterate while Adjusted R2 increases.
+  while (improvement) {
+    
+    #Lists are initialized as empty
+    predictors <- NULL
+    positions <- NULL
+    r2 <- NULL
+    
+    for (x in c((predictor_num + 1):num_of_vars)) {
+
+      positions = c(positions, x)
+      #If we are selecting the first predictor, only include that one.
+      #Otherwise, include all predictors chosen thus far and the selected.
+      if (predictor_num == 1) {
+        predictors <- c(predictors, colnames(df[x]))  
+      } else if (predictor_num == 2) {
+        predictors <- c(predictors, paste(colnames(df[2]),
+                                          colnames(df[x]),
+                                          sep = " + "))
+      } else {
+        predictors <- c(predictors, paste("Previous Predictors",
+                                          colnames(df[x]),
+                                          sep = " + "))
+      }
+      
+      #Make a temp dataframe with only the chosen predictors and the current selected one.
+      temp_df <- df %>%
+        select(colnames(df[c(1:predictor_num, x)]))
+      
+      #Retrieve the Adjusted R squared from that model.
+      temp_r2 <- summary(lm(price ~ ., data = temp_df))$adj.r.squared
+      r2 <- c(r2, temp_r2)
+    }
+    
+    #Create a dataframe from the three lists.
+    r2_values <- data.frame("Predictor_Variables" = predictors,
+                            "Positions" = positions,
+                            "Adjusted_R2" = r2) %>%
+      arrange(desc(r2))
+    
+    high_pred <- r2_values$Predictor_Variables[1]
+    pred_pos <- r2_values$Positions[1]
+    high_r2 <- r2_values$Adjusted_R2[1]
+    
+    if (high_r2 > prev_R2) {
+      
+      #Add the predictor(s) with the highest Adjusted R2 thus far.
+      final_predictors <- c(final_predictors, high_pred)
+      final_r2 <- c(final_r2, high_r2)
+      
+      #One of the variables is the price.
+      if (predictor_num < num_of_vars - 1) {
+
+        if (pred_pos == num_of_vars) {
+          #Reorder the df for the next iteration.
+          df <- df[c(1 : predictor_num, pred_pos, (predictor_num + 1) : (pred_pos - 1))]
+          
+        } else if ((predictor_num + 1) < pred_pos) {
+          #Reorder the df for the next iteration.
+          df <- df[c(1 : predictor_num, pred_pos, (predictor_num + 1) : (pred_pos - 1), (pred_pos + 1) : num_of_vars)]
+        }
+                
+        #Increase the number of predictors for next iteration.
+        predictor_num <- predictor_num + 1
+        #Increase the Adjusted R2 for next iteration.
+        prev_R2 <- high_r2
+        
+      } else {
+        #No more variables remaining.
+        improvement <- FALSE
+      }
+      
+    } else {
+      #Adjusted R2 did not increase.
+      improvement <- FALSE
+    }
+  }
+  model_selection <- data.frame("Predictor_Variables" = final_predictors,
+                                "Adjusted_R2" = final_r2)
+  model_selection
+}
+
+#Model Selection.
+forward_r2(ames_train_prelim)
+```
+
+* * *
+
+### 2.3 Initial Model Residuals
+
+Define outliers and graph helper.
+```{r eval = FALSE}
+
+#Include columns for residuals and outliers.
+ames_train_prelim <- ames_train_prelim %>%
+  mutate(price_resid = residuals(prelim_model),
+         outliers = ifelse((price_resid >= 0) & (price_resid >= 3*sd(price_resid)), "yes",
+                           ifelse((price_resid <= 0) & (price_resid <= -3*sd(price_resid)), "yes", "no")))
+
+#Appends identical attributes to residual plots.
+residual_gg_helper <- function(gg_object) {
+  #Scatter
+  gg_object <- gg_object + geom_point(aes(color = outliers, alpha = outliers), size = 2)
+  #Best Fit.
+  gg_object <- gg_object + stat_smooth(formula = y ~ x, method = "lm", color = viridis(8)[1], size = 0.6, se = FALSE)
+  #Viridis Color Scheme
+  gg_object <- gg_object + scale_color_manual(values = c(viridis(8)[5], viridis(8)[3]))
+  gg_object <- gg_object + scale_alpha_manual(values = c(0.3, 1))
+  #Modify labels and text.
+  gg_object <- gg_object + theme(plot.title = element_text(hjust = 0.5, size = 10, face = "bold"),
+                                 axis.text.x = element_text(hjust = 1, size = 8, angle = 55),
+                                 axis.title.x = element_text(size = 8, face = "bold"),
+                                 axis.text.y = element_text(size = 8),
+                                 axis.title.y = element_text(hjust = 0.5, size = 8, face = "bold"),
+                                 legend.position = "none")
+  return(gg_object)
+}
+```
+
+Residual Values vs Area.
+```{r eval = FALSE}
+
+g4 <- ggplot(ames_train_prelim, aes(x = area, y = price_resid))
+#Title.
+g4 <- g4 + ggtitle("Residual Value vs Area")
+#X-axis & Y-axis.
+g4 <- g4 + scale_x_continuous("Area (sq. ft.)", labels = comma) + ylab("Residual Value")
+#Additional attributes.
+g4 <- residual_gg_helper(g4)
+```
+
+Residual Values vs Number of Bedrooms.
+```{r eval = FALSE}
+
+g5 <- ggplot(ames_train_prelim, aes(x = Bedroom.AbvGr, y = price_resid))
+#Title.
+g5 <- g5 + ggtitle("Residual Value vs Number of Bedrooms")
+#X-axis & Y-axis.
+g5 <- g5 + scale_x_continuous("Number of Bedrooms") + ylab("Residual Value")
+#Additional attributes.
+g5 <- residual_gg_helper(g5)
+```
+
+Residual Values vs Year Built.
+```{r eval = FALSE}
+g6 <- ggplot(ames_train_prelim, aes(x = Year.Built, y = price_resid))
+#Title.
+g6 <- g6 + ggtitle("Residual Value vs Year Built")
+#X-axis & Y-axis.
+g6 <- g6 + scale_x_continuous("Year Built") + ylab("Residual Value")
+#Additional attributes.
+g6 <- residual_gg_helper(g6)
+```
+
+Residual Values vs Remodel Year.
+```{r eval = FALSE}
+
+g7 <- ggplot(ames_train_prelim, aes(x = Year.Remod.Add, y = price_resid))
+#Title.
+g7 <- g7 + ggtitle("Residual Value vs Remodel Year")
+#X-axis & Y-axis.
+g7 <- g7 + scale_x_continuous("Remodel Year") + ylab("Residual Value")
+#Additional attributes.
+g7 <- residual_gg_helper(g7)
+```
+
+Residual Values vs Number of Full Bathrooms.
+```{r eval = FALSE}
+g8 <- ggplot(ames_train_prelim, aes(x = Full.Bath, y = price_resid))
+#Title.
+g8 <- g8 + ggtitle("Residual Value vs Number of Full Bathrooms")
+#X-axis & Y-axis.
+g8 <- g8 + scale_x_continuous("Number of Bathrooms") + ylab("Residual Value")
+#Additional attributes.
+g8 <- residual_gg_helper(g8)
+```
+
+Residual Values vs Number of Half Bathrooms.
+```{r eval = FALSE}
+
+g9 <- ggplot(ames_train_prelim, aes(x = Full.Bath, y = price_resid))
+#Title.
+g9 <- g9 + ggtitle("Residual Value vs Number of Half Bathrooms")
+#X-axis & Y-axis.
+g9 <- g9 + scale_x_continuous("Number of Bathrooms") + ylab("Residual Value")
+#Additional attributes.
+g9 <- residual_gg_helper(g9)
+```
+
+Create Grid.
+```{r eval = FALSE}
+
+grid.arrange(g4, g5, g6, g7, g8, g9,
+             layout_matrix = matrix(rbind(c(1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2),
+                                          c(3, 3, 3, 3, 3, NA, 4, 4, 4, 4, 4),
+                                          c(5, 5, 5, 5, 5, NA, 6, 6, 6, 6, 6)),
+                                    ncol = 11))
+```
+
+* * *
+
+### 2.4 Initial Model RMSE
+
+```{r eval = FALSE}
+
+rmse(ames_train_prelim$price, prelim_model$fitted)
+```
+
+* * *
+
+### 2.5 Overfitting 
+
+Load `ames_test`.
+```{r eval = FALSE}
+
+#Numerical categories were converted to factor variables.
+ames_test$Overall.Qual <- as.factor(ames_test$Overall.Qual)
+ames_test$Overall.Cond <- as.factor(ames_test$Overall.Cond)
+```
+
+Subset preliminary model.
+```{r eval = FALSE}
+
+ames_test_prelim <- ames_test %>%
+  select(price,
+         area,
+         Bedroom.AbvGr,
+         Half.Bath,
+         Full.Bath,
+         Neighborhood,
+         Overall.Qual,
+         Year.Built,
+         Year.Remod.Add)
+
+ames_test_prelim[ames_test_prelim$Neighborhood == "Landmrk", ]
+```
+
+RMSE of `ames_test`.
+```{r eval = FALSE}
+
+ames_test_prelim <- ames_test_prelim[ames_test_prelim$Neighborhood != "Landmrk", ]
+prelim_test <- predict(prelim_model, ames_test_prelim)
+
+rmse(ames_test_prelim$price, prelim_test)
+```
+
+* * *
+
+## Part 3 Development of a Final Model
+
+* * *
+
+### 3.1 Transformation
+
+Distribution of Houses by Price Histograms for `ames_train` and `ames_test`.
+```{r eval = FALSE}
+
+price_train <- ggplot(ames_train, aes(x = price))
+price_train <- price_train + geom_histogram(bins = 30, fill = viridis(7)[4])
+#Title.
+price_train <- price_train + ggtitle("")
+#X-axis
+price_train <- price_train + scale_x_continuous(name = "House Prices (Training Set)", expand = c(0,0), labels = dollar)
+#Y-axis.
+price_train <- price_train + scale_y_continuous(name = "Frequency of Price", limits = c(0, 180), expand = c(0,0))
+#Modify labels and text.
+price_train <- price_train + theme(plot.title = element_text(hjust = 0, size = 14, face = "bold"),
+                                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55), 
+                                 axis.title.x = element_text(size = 12, face = "bold"),
+                                 axis.text.y = element_text(size = 10),
+                                 axis.title.y = element_text(size = 12, face = "bold"))
+
+price_test <- ggplot(ames_test, aes(x = price))
+price_test <- price_test + geom_histogram(bins = 30, fill = viridis(7)[4])
+#Title.
+price_test <- price_test + ggtitle("Distribution of Houses by Price")
+#X-axis
+price_test <- price_test + scale_x_continuous(name = "House Prices (Testing Set)", expand = c(0,0), labels = dollar)
+#Y-axis.
+price_test <- price_test + scale_y_continuous(name = "", limits = c(0, 180), expand = c(0,0))
+#Modify labels and text.
+price_test <- price_test + theme(plot.title = element_text(hjust = -2.7, size = 14, face = "bold"),
+                                 axis.text.x = element_text(hjust = 1, size = 10, angle = 55), 
+                                 axis.title.x = element_text(size = 12, face = "bold"),
+                                 axis.text.y = element_text(size = 10),
+                                 axis.title.y = element_text(size = 12, face = "bold"))
+
+grid.arrange(price_train, price_test,
+             layout_matrix = matrix(c(1, 2),
+                                    ncol = 2))
+```
+
+Log transformations.
+```{r eval = FALSE}
+
+#Select only relevant variables.
+ames_train_transf <- ames_train %>%
+  select(price, Year.Built, Year.Remod.Add, area, Lot.Area, Garage.Area, Total.Bsmt.SF, X1st.Flr.SF, X2nd.Flr.SF)
+
+predictor <- NULL
+r2 <- NULL
+log_r2 <- NULL
+
+
+for (p in colnames(ames_train_transf)[-1]) {
+  
+  temp_r2 <- summary(lm(as.formula(paste("price ~ ", p, sep = "")),
+                        data = ames_train_transf))$r.squared
+  if (p %in% c("Year.Built", "Year.Remod.Add")) {
+    temp_log_r2 <- summary(lm(as.formula(paste("price ~ log(2020 - ", p, ")", sep = "")),
+                        data = ames_train_transf))$r.squared
+  } else {
+  temp_log_r2 <- summary(lm(as.formula(paste("price ~ log(", p, " + 1)", sep = "")),
+                        data = ames_train_transf))$r.squared
+  }
+  predictor <- c(predictor, p)
+  r2 <- c(r2, temp_r2)
+  log_r2 <- c(log_r2, temp_log_r2)
+}
+
+transformations <- data.frame("Predictor_Variables" = predictor,
+                              "R2_of_Predictor" = r2,
+                              "R2_of_log_Predictor" = log_r2)
+
+transformations
+```
+
+Transform `House.Age` (from `Year.Built`) and `Lot.Area` in `ames_train` and `ames_test`.
+```{r eval = FALSE}
+
+#Transform.
+ames_train_final <- ames_train %>%
+  mutate(House.Age = log(2020 - Year.Built),
+         Lot.Area = log(Lot.Area))
+
+ames_test_final <- ames_test %>%
+  mutate(House.Age = log(2020 - Year.Built),
+         Lot.Area = log(Lot.Area)) 
+```
+
+
+* * *
+
+### 3.2 Variable Interaction
+
+Create `Date.Sold` from `Yr.Sold` and `Mo.Sold`.
+```{r eval = FALSE}
+
+ames_train_final <- ames_train_final %>%
+  mutate(Date.Sold = ifelse((Mo.Sold > 9),
+                             as.Date(paste(Yr.Sold,
+                                           Mo.Sold,
+                                           "01",
+                                           sep = "/"),
+                                     "%Y/%m/%d"),
+                             as.Date(paste(Yr.Sold,
+                                           paste("0",
+                                                 Mo.Sold,
+                                                 sep = ""),
+                                           "01",
+                                           sep = "/"),
+                                     "%Y/%m/%d")))
+```
+
+* * *
+
+### 3.3 Variable Selection
+
+Correlation plot of selected numerical variables.
+```{r eval = FALSE}
+
+ggcorr(ames_train_final %>% 
+         mutate(X1st.X2nd.SF = X1st.Flr.SF + X2nd.Flr.SF) %>%
+         select(Lot.Area, area, X1st.Flr.SF, X2nd.Flr.SF, Garage.Area,
+                Garage.Cars, X1st.X2nd.SF, Total.Bsmt.SF, TotRms.AbvGrd, 
+                Kitchen.AbvGr, Bedroom.AbvGr, Full.Bath, Half.Bath),
+       label = TRUE) + scale_fill_viridis(direction = -1)
+```
+
+Remove `area`, `Garage.Cars`, and `Year.Built`.
+```{r eval = FALSE}
+
+ames_train_final <- ames_train_final %>%
+  select(-area, -Garage.Cars, -Year.Built)
+```
+
+Forward selection by Adjusted R<sup>2</sup>.
+```{r eval = FALSE}
+
+forward_r2(ames_train_final)[1:20,]
+```
+
+* * *
+
+### 3.4 Model Testing
+
+Two observations with level *AsphShn* in `Exterior.1st`.
+```{r eval = FALSE}
+
+ames_test_final %>%
+  filter(Exterior.1st == "AsphShn") %>%
+  select(PID, price, Exterior.1st, Neighborhood, Lot.Area, Year.Built)
+```
+
+Remove new levels (3 observations) and add NAs as levels.
+```{r eval = FALSE}
+
+ames_test_final <- ames_test_final %>%
+  filter(Neighborhood != "Landmrk",
+         Exterior.1st != "AsphShn") %>%
+  mutate(BsmtFin.Type.1 = addNA(BsmtFin.Type.1))
+```
+
+Top 20 columns from `ames_train` and `ames_test` are subset. 
+```{r eval = FALSE}
+
+ames_train_final2 <- ames_train_final %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area, MS.Zoning, BsmtFin.SF.1, Central.Air,
+         Condition.1, BsmtFin.SF.2, Exterior.1st, Garage.Area, Bsmt.Unf.SF,
+         Fireplace.Qu, Kitchen.Qual, Functional, Year.Remod.Add)
+
+ames_test_final2 <- ames_test_final2 %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area, MS.Zoning, BsmtFin.SF.1, Central.Air,
+         Condition.1, BsmtFin.SF.2, Exterior.1st, Garage.Area, Bsmt.Unf.SF,
+         Fireplace.Qu, Kitchen.Qual, Functional, Year.Remod.Add)
+```
+
+Create 20 different models, in order, and calculate and compare the RMSE of `ames_train` and `ames_test`.
+```{r eval = FALSE}
+
+
+num_of_pred <- NULL
+rmse <- NULL
+dataset <- NULL
+
+#The dependent variable, price, has been log transformed.  Change it back for RMSE calculation.
+rmse_log <- function(obs, pred) {
+  obs <- exp(obs)
+  pred <- exp(pred)
+  return(rmse(obs, pred))
+}
+
+for (i in 2:21) {
+  temp_train_df <- ames_train_final2[, 1:i]
+  temp_test_df <- ames_test_final2[, 1:i]
+  temp_model <- lm(price ~ ., data = temp_train_df)
+  temp_predicted <- predict(temp_model, temp_train_df)
+  temp_tested <- predict(temp_model, temp_test_df)
+  
+  num_of_pred <- c(num_of_pred, i-1, i-1)
+  rmse <- c(rmse,
+            rmse_log(temp_train_df$price, temp_predicted),
+            rmse_log(temp_test_df$price, temp_tested))
+  dataset <- c(dataset, "Ames Train", "Ames Test")
+}
+
+rmse_df <- data.frame("Number_of_Predictors" = num_of_pred,
+                      "Root_Mean_Square_Error" = rmse,
+                      "Dataset" = dataset)
+
+```
+
+RMSE vs Number of Variables for `ames_train` and `ames_test`.
+```{r eval = FALSE}
+
+#RMSE vs Number of Variables for ames_train and ames_test.
+g10 <- ggplot(rmse_df, aes(x = Number_of_Predictors, y = Root_Mean_Square_Error, color = Dataset))
+g10 <- g10 + geom_point(size = 7)
+#Title.
+g10 <- g10 + ggtitle("Number of Predictors vs RMSE for Training and Test Data")
+#X-axis & Y-axis.
+g10 <- g10 + scale_x_continuous("Number of Predictors") + scale_y_continuous("RMSE", labels = dollar)
+#Viridis Color Scheme
+g10 <- g10 + scale_color_manual(values = c(viridis(8)[6], viridis(8)[2]))
+#Modify labels and text.
+g10 <- g10 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+g10
+```
+
+RMSE for 7 - 11 variables.
+```{r eval = FALSE}
+print(rmse_df %>%
+        filter(Number_of_Predictors %in% 7:11),
+      row.names = F)
+```
+
+* * *
+
+### 3.5 Final Model
+
+```{r eval = FALSE}
+
+ames_train_final3 <- ames_train_final2 %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area)
+
+final_model <- lm(price ~ ., ames_train_final3)
+
+summary(final_model)
+```
+
+* * *
+
+## Part 4 : Final Model Assessment
+
+### 4.1 Final Model Residuals
+
+#### Linear Relationships Between x and y
+
+Define outliers and graph helper.
+```{r, eval = FALSE}
+#Include columns for residuals and outliers.
+ames_train_diagnostics <- ames_train_final3 %>%
+  mutate(price_resid = residuals(final_model),
+         outliers = ifelse((price_resid >= 0) & (price_resid >= 3*sd(price_resid)), "yes",
+                           ifelse((price_resid <= 0) & (price_resid <= -3*sd(price_resid)), "yes", "no")))
+
+#Appends identical attributes to residual plots.
+#Use residual_gg_helper from 2.3.
+```
+
+Residual Values vs First Floor Area.
+```{r, eval = FALSE}
+
+g11 <- ggplot(ames_train_diagnostics, aes(x = X1st.Flr.SF, y = price_resid))
+#Title.
+g11 <- g11 + ggtitle("Residual Value vs 1st Floor Area")
+#X-axis & Y-axis.
+g11 <- g11 + scale_x_continuous("Area (sq. ft.)", labels = comma) + ylab("Residual Value")
+#Additional attributes.
+g11 <- residual_gg_helper(g11)
+```
+
+Residual Values vs 2nd Floor Area.
+```{r, eval = FALSE}
+
+g12 <- ggplot(ames_train_diagnostics, aes(x = X2nd.Flr.SF, y = price_resid))
+#Title.
+g12 <- g12 + ggtitle("Residual Value vs 2nd Floor Area")
+#X-axis & Y-axis.
+g12 <- g12 + scale_x_continuous("Area (sq. ft.)", labels = comma) + ylab("Residual Value")
+#Additional attributes.
+g12 <- residual_gg_helper(g12)
+```
+
+Residual Values vs House Age.
+```{r, eval = FALSE}
+
+g14 <- ggplot(ames_train_diagnostics, aes(x = House.Age, y = price_resid))
+#Title.
+g14 <- g14 + ggtitle("Residual Value vs ln(House Age)")
+#X-axis & Y-axis.
+g14 <- g14 + scale_x_continuous("ln(House Age)") + ylab("Residual Value")
+#Additional attributes.
+g14 <- residual_gg_helper(g14)
+```
+
+Residual Values vs Lot Area.
+```{r, eval = FALSE}
+
+g15 <- ggplot(ames_train_diagnostics, aes(x = Lot.Area, y = price_resid))
+#Title.
+g15 <- g15 + ggtitle("Residual Value vs ln(Lot Area)")
+#X-axis & Y-axis.
+g15 <- g15 + scale_x_continuous("ln(Lot Area)") + ylab("Residual Value")
+#Additional attributes.
+g15 <- residual_gg_helper(g15)
+```
+
+Create Grid.
+```{r, eval = FALSE}
+
+grid.arrange(g11, g12, g14, g15,
+             layout_matrix = matrix(rbind(c(1, 1, 1, 1, 1, NA, 2, 2, 2, 2, 2),
+                                          c(4, 4, 4, 4, 4, NA, 5, 5, 5, 5, 5)),
+                                    ncol = 11))
+```
+
+#### Nearly Normal Residuals
+
+Histogram
+```{r eval = FALSE}
+
+g16 <- ggplot(final_model, mapping = aes(x = .resid)) + geom_histogram(bins = 30, fill = viridis(5)[3])
+#Title.
+g16 <- g16 + ggtitle("Distribution of Residuals")
+#X-axis & Y-axis.
+g16 <- g16 + scale_x_continuous("Residual Value") + ylab("Frequency")
+#Modify labels and text.
+g16 <- g16 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+```
+
+Normal-QQ Plot
+```{r eval = FALSE}
+
+g17 <- ggplot(data = final_model)
+g17 <- g17 + stat_qq(data = final_model, aes(sample = .resid), color = viridis(5)[3], size = 3, alpha = 0.4)
+g17 <- g17 + stat_qq_line(data = final_model, mapping = aes(sample = .resid), color = viridis(5)[1], size = 1)
+#Title.
+g17 <- g17 + ggtitle("Normal-QQ Plot")
+#X-axis & Y-axis.
+g17 <- g17 + scale_x_continuous("Theoretical Quantile") + scale_y_continuous("Standardized Residual")
+#Modify labels and text.
+g17 <- g17 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(size = 10), 
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+```
+
+Create Grid.
+```{r eval = FALSE}
+grid.arrange(g16, g17, layout_matrix = matrix(c(1, 2),
+                                              ncol = 2))
+```
+
+#### Constant Variability of Residuals
+
+Scatter of Residuals vs. Fitted.
+```{r eval = FALSE}
+
+g18 <- ggplot(final_model, aes(x = .fitted, y = .resid))
+g18 <- g18 + geom_point(color = viridis(5)[3], size = 3, alpha = 0.4)
+##Horizontal Line.
+g18 <- g18 + geom_hline(yintercept = 0, col = viridis(5)[1], linetype = "dashed")
+#Title.
+g18 <- g18 + ggtitle("Residuals vs Fitted")
+#X-axis & Y-axis.
+g18 <- g18 + scale_x_log10("Fitted Value") + scale_y_continuous("Residual Value")
+#Modify labels and text.
+g18 <- g18 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55), 
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+```
+
+Scatter of Absolute Value of Residuals vs. Fitted.
+```{r eval = FALSE}
+
+g19 <- ggplot(final_model, aes(x = .fitted, y = abs(.resid)))
+g19 <- g19 + geom_point(color = viridis(5)[3], size = 3, alpha = 0.4)
+##Horizontal Line.
+g19 <- g19 + geom_hline(yintercept = 0, col = viridis(5)[1], linetype = "dashed")
+#Title.
+g19 <- g19 + ggtitle("Absolute Value of Residuals vs Fitted")
+#X-axis & Y-axis.
+g19 <- g19 + scale_x_log10("Fitted Value") + scale_y_continuous("Absolute Value of Residual")
+#Modify labels and text.
+g19 <- g19 + theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+                   axis.text.x = element_text(hjust = 1, size = 10, angle = 55),
+                   axis.title.x = element_text(size = 12, face = "bold"),
+                   axis.text.y = element_text(size = 10),
+                   axis.title.y = element_text(size = 12, face = "bold"))
+```
+
+Create Grid.
+```{r eval = FALSE}
+grid.arrange(g18, g19, layout_matrix = matrix(c(1, 2),
+                                              ncol = 2))
+```             
+
+* * *
+
+### 4.2 Final Model RMSE
+
+RMSE of `ames_train` and `ames_test`
+```{r eval = FALSE}
+
+#Training Set.
+final_train <- predict(final_model, ames_train_final3)
+rmse_log(ames_train_final3$price, final_train)
+
+#Test Set.
+ames_test_final3 <- ames_test_final %>%
+  filter(Neighborhood != "Landmrk") %>%
+  mutate(BsmtFin.Type.1 = addNA(BsmtFin.Type.1)) %>%
+   select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area) 
+
+final_test <- predict(final_model, ames_test_final3)
+rmse_log(ames_test_final3$price, final_test)
+```
+
+* * * 
+
+### 4.4 Final Model Validation
+
+RMSE of `ames_validation`.
+```{r eval = FALSE}
+
+load("ames_validation.Rdata")
+
+ames_valid_final <- ames_validation %>%
+  mutate(price = log(price),
+         Overall.Qual = as.factor(Overall.Qual),
+         BsmtFin.Type.1 = addNA(BsmtFin.Type.1),
+         Overall.Cond = as.factor(Overall.Cond),
+         House.Age = log(2020 - Year.Built),
+         Lot.Area = log(Lot.Area)) %>%
+  select(price, Overall.Qual, Neighborhood, X1st.Flr.SF, X2nd.Flr.SF, BsmtFin.Type.1,
+         Overall.Cond, House.Age, Lot.Area) 
+
+final_validation <- predict(final_model, ames_valid_final)
+
+rmse_log(ames_valid_final$price, final_validation)
+```
+
+Prediction Interval
+```{r, eval = FALSE}
+
+#Retrieve prediction interval.  Find the percentage of price values in the prediction interval.
+
+#Ames Test.
+predict_test <- exp(predict(final_model, ames_test_final3, interval = "prediction"))
+mean(exp(ames_test_final3$price) > predict_test[,"lwr"] & exp(ames_test_final3$price) < predict_test[,"upr"])
+
+#Ames Validation.
+predict_valid <- exp(predict(final_model, ames_valid_final, interval = "prediction"))
+
+mean(exp(ames_valid_final$price) > predict_valid[,"lwr"] &
+                       exp(ames_valid_final$price) < predict_valid[,"upr"])
+```
+
+* * *
