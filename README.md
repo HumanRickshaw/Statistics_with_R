@@ -36,4 +36,4 @@
 
 [Description](https://www.coursera.org/learn/statistics-project/peer/Se5VT/final-data-analysis)
 
-[HTML](https://humanrickshaw.github.io/Statistics_with_R/Final_Data_Analysis)
+[HTML](https://humanrickshaw.github.io/Statistics_with_R/Final_Data_Analysis.html)
