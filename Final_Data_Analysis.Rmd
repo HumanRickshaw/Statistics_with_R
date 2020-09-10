@@ -231,7 +231,7 @@ prelim_model <- lm(price ~ ., data = ames_train_prelim)
 summary(prelim_model)
 ```
 
-Based on the simple linear model of our preliminary variables, the Adjusted R<sup>2</sup> is 0.8799, which means approximately 88% of the variability in price can be explained by eight variables for the 1000 observed houses in the training data set.  Furthermore, looking at p-values, five numerical variables are significant at α = 0.001, and the sixth is very close.
+Based on the simple linear model of our preliminary variables, the R<sup>2</sup> is 0.8858, which means approximately 89% of the variability in price can be explained by eight variables for the 1000 observed houses in the training data set.  Furthermore, looking at p-values, five numerical variables are significant at α = 0.001, and the sixth is very close.
 
 For Neighborhood and Overall Quality, the two categorical variables selected, several individual levels are significant at α = 0.01 and α = 0.001.  *Northridge Heights*, *Northridge*, *Green Hills*, and *Timber*, four of the top 5 neighborhoods by price, are notable in the initial linear regression model as significant. Several other neighborhoods are also significant at various levels.  Overall Quality of 8, 9, and 10 have the highest significance as predictors.  This numerical analysis agrees with observations in the graphs from the Exploratory Data Analysis.
 
@@ -1005,7 +1005,7 @@ What are some strengths and weaknesses of your model?
 
 * * *
 
-The model has an Adjusted R<sup>2</sup> of 0.9293.  93% of the variance of price is explained by eight of the 81 variables. Furthermore, each of the eight predictors, whether it be numerical or at least one level in a categorical, is significant at the α = 0.001 level.
+The final model has an R<sup>2</sup> of 0.9338.  93% of the variance of price is explained by eight of the 81 variables. Furthermore, each of the eight predictors, whether it be numerical or at least one level in a categorical, is significant at the α = 0.001 level.
 
 The model is a very good fit for most of the data. However, the model is fit for only those homes with `Sale.Condition` that is *Normal*.  While the initial training set was a standard 1000 houses, filtering left only 834 to create the model.  This is [approximately 3.3%](https://www.census.gov/quickfacts/fact/table/amescityiowa/HSD410218#HSD410218) of the total.  It is important to stress that this model is specific to Ames, and would vary greatly in predictive power across the US.
 
