@@ -829,6 +829,8 @@ For your final model, create and briefly interpret an informative plot of the re
 * * *
 ### Linear Relationships Between x and y
 
+For all four numerical predictors, the residuals appear to be randomly scattered around 0.  Outliers are highlighted in blue.
+
 ```{r echo = FALSE}
 
 #Include columns for residuals and outliers.
